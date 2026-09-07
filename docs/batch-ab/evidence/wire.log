@@ -1,0 +1,5 @@
+go: downloading golang.org/x/tools v0.24.1
+go: downloading github.com/google/subcommands v1.2.0
+go: downloading golang.org/x/mod v0.20.0
+go: downloading golang.org/x/sync v0.8.0
+wire: github.com/wxlbd/ruoyi-mall-go/cmd/server: wrote /Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/cmd/server/wire_gen.go

@@ -1,0 +1,10 @@
+internal/pkg/permission/adapter.go:53:	err := a.db.WithContext(database.PolicyReadContext(context.Background())).Table("system_role_menu srm").
+internal/pkg/permission/adapter.go:81:	err := a.db.WithContext(database.PolicyReadContext(context.Background())).Table("system_user_role sur").
+internal/testutil/postgres.go:23: if err := admin.Exec("CREATE SCHEMA "+name).Error; err != nil { pool.Close(); t.Fatal(err) }
+internal/testutil/postgres.go:24: t.Cleanup(func(){ if err := admin.Exec("DROP SCHEMA "+name+" CASCADE").Error; err != nil { t.Error(err) }; pool.Close() })
+internal/service/mall/trade/brokerage/record.go:290:	query := db.Table(tableName).
+internal/service/mall/trade/brokerage/record.go:348:	subQuery := db.Table(tableName).
+internal/service/mall/trade/brokerage/record.go:358:	db.Table("(?) as ranked", subQuery).Count(&greaterCount)
+internal/service/mall/trade/brokerage/user.go:520:	query := db.Table(tableName).
+internal/service/system/mail_service.go:447:		if err := s.db.WithContext(ctx).Table("system_users").Select("email").Where("id = ?", userID).Scan(&user.Email).Error; err != nil {
+internal/service/system/mail_service.go:454:		if err := s.db.WithContext(ctx).Table("member_user").Select("email").Where("id = ?", userID).Scan(&email).Error; err != nil {

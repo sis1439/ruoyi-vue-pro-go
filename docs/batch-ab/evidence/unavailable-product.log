@@ -1,0 +1,10 @@
+=== RUN   TestOrderTransactionUnavailableProduct
+=== RUN   TestOrderTransactionUnavailableProduct/out-of-stock
+=== RUN   TestOrderTransactionUnavailableProduct/off-shelf
+=== RUN   TestOrderTransactionUnavailableProduct/recycled
+--- PASS: TestOrderTransactionUnavailableProduct (0.47s)
+    --- PASS: TestOrderTransactionUnavailableProduct/out-of-stock (0.17s)
+    --- PASS: TestOrderTransactionUnavailableProduct/off-shelf (0.15s)
+    --- PASS: TestOrderTransactionUnavailableProduct/recycled (0.15s)
+PASS
+ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/trade	3.307s

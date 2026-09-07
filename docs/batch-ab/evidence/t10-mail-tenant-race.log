@@ -1,0 +1,23 @@
+=== RUN   TestMailSameCodeTenantSelection
+--- PASS: TestMailSameCodeTenantSelection (0.16s)
+=== RUN   TestMailExplicitTenantAndDependencyFailures
+
+2026/09/07 22:07:05 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/system/mail_service.go:320 [35;1mrecord not found
+[0m[33m[0.291ms] [34;1m[rows:0][0m SELECT * FROM "system_mail_template" WHERE (tenant_id = 1911 AND code = 'b-only') AND "system_mail_template"."deleted" = 0 ORDER BY "system_mail_template"."id" LIMIT 1
+
+2026/09/07 22:07:05 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/system/mail_service.go:114 [35;1mrecord not found
+[0m[33m[0.244ms] [34;1m[rows:0][0m SELECT * FROM "system_mail_account" WHERE tenant_id = 1911 AND "system_mail_account"."id" = 1 AND "system_mail_account"."deleted" = 0 ORDER BY "system_mail_account"."id" LIMIT 1
+
+2026/09/07 22:07:05 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/system/mail_service.go:114 [35;1mrecord not found
+[0m[33m[0.144ms] [34;1m[rows:0][0m SELECT * FROM "system_mail_account" WHERE tenant_id = 1911 AND "system_mail_account"."id" = 1 AND "system_mail_account"."deleted" = 0 ORDER BY "system_mail_account"."id" LIMIT 1
+
+2026/09/07 22:07:05 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/system/mail_service.go:320 [35;1msql: database is closed
+[0m[33m[0.024ms] [34;1m[rows:0][0m SELECT * FROM "system_mail_template" WHERE (tenant_id = 1912 AND code = 'b-only') AND "system_mail_template"."deleted" = 0 ORDER BY "system_mail_template"."id" LIMIT 1
+--- PASS: TestMailExplicitTenantAndDependencyFailures (0.14s)
+=== RUN   TestMailRecipientLookupUsesTenantModel
+
+2026/09/07 22:07:05 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/system/mail_service.go:435 [35;1mrecord not found
+[0m[33m[0.164ms] [34;1m[rows:0][0m SELECT "email" FROM "system_users" WHERE (tenant_id = 1921 AND id = 2) AND "system_users"."tenant_id" = 1921 AND "system_users"."deleted" = 0 ORDER BY "system_users"."id" LIMIT 1
+--- PASS: TestMailRecipientLookupUsesTenantModel (0.15s)
+PASS
+ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/system	2.242s

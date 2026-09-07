@@ -1,0 +1,6 @@
+migrations/000001_baseline.up.sql: OK
+migrations/000002_constraints.up.sql: OK
+migrations/000003_seeds.up.sql: OK
+migrations/000004_page_menus.up.sql: OK
+migrations/000005_payment_identity.up.sql: OK
+migrations/000006_trade_permissions.up.sql: OK

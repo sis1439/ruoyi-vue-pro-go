@@ -1,0 +1,5 @@
+--- FAIL: TestMailSameCodeTenantSelection (0.17s)
+    mail_service_tenant_test.go:35: send did not reach tenant audit boundary: code: 1002024000, msg: 邮件模版不存在
+FAIL
+FAIL	github.com/wxlbd/ruoyi-mall-go/internal/service/system	0.849s
+FAIL

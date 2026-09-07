@@ -1,0 +1,6 @@
+--- FAIL: TestRequiredZeroValues (0.00s)
+    zero_values_test.go:17: explicit boolean rejected: Key: 'AppAddressCreateReq.DefaultStatus' Error:Field validation for 'DefaultStatus' failed on the 'required' tag
+    zero_values_test.go:29: explicit zero sort rejected: Key: 'ProductBrandCreateReq.Sort' Error:Field validation for 'Sort' failed on the 'required' tag
+FAIL
+FAIL	github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member	1.700s
+FAIL
