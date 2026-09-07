@@ -1,0 +1,29 @@
+✔ login JSON, logout POST, refresh token query, social mini-app fields (19.991667ms)
+✔ address create/update body and delete query remain distinct (11.383417ms)
+✔ product IDs arrays and pagination forwarded, zero kept (11.185042ms)
+✔ cart JSON false and query array survive wrapper (11.933625ms)
+✔ settlement emits Spring indexed dotted keys, preserves false, omits absent optional IDs (11.982375ms)
+✔ settlement empty input is serialized, not validated by wrapper (18.634042ms)
+✔ order create is JSON; detail preserves sync true/false/omitted and cancellation DELETE (22.592625ms)
+✔ pay submission retains channelExtras; get supports id/no and sync (10.351041ms)
+✔ delivery lookup and after-sale PUT /delivery are fixed client contracts (18.120166ms)
+✔ coupon and trade-config requests remain in first-phase inventory (18.222292ms)
+✔ upload uses multipart file plus directory and tenant header (9.04825ms)
+✔ actual mini-app payment method parses signed displayContent and maps packageValue (8.833125ms)
+✔ bare prepay ID cannot be consumed as displayContent (known baseline gap) (8.999625ms)
+✔ payment business failure does not invoke terminal payment (9.228875ms)
+✔ numeric IDs above JavaScript safe range lose precision; no invented coercion policy (8.561166ms)
+✔ fixed admin login, logout, permission info and menu retrieval (67.776167ms)
+✔ fixed admin delivery body, pickup ID query and verification code query (14.512125ms)
+✔ fixed admin after-sale refund is PUT query; disagree body (11.020125ms)
+✔ actual app response interceptor preserves null/empty/missing/zero and business errors (9.6915ms)
+(node:72632) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 306.76125
