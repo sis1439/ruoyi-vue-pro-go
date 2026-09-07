@@ -30,3 +30,5 @@
 ## 管理后台实际构建与契约等价
 
 管理后台完整生产构建、清空 node_modules 后的 frozen-lock 安装及重建均通过，2,468 个产物文件字节一致。Node `25.8.1`、pnpm `11.19.0`；运行手册和日志见 [frontend-admin-build.md](frontend-admin-build.md)。原契约参照 `aab14fb` 保留；实际官方构建基线为 `2e001992`。两者 package.json、pnpm-lock.yaml、148 条已选 API 对应的 26 个源码文件及数据库六个菜单组件全部字节一致，故无需更改既有 API 引用或 SQL 菜单路径。逐文件哈希及完整差异见 [契约等价证据](evidence/t00-admin/contract-equivalence.json)。
+
+最终补充：原前端目录新增`ruoyi_go_batch_ab_result.md`结果入口以及`.work/`、`.pnpm-store/`忽略规则；.git只读，入口改动未提交。页面业务源码和原交接文档未修改。后端分任务提交及干净检出验证见README和verification-report。
