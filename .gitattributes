@@ -1,0 +1,4 @@
+
+# Preserve verbatim terminal evidence, including CR and assertion indentation.
+docs/batch-ab/evidence/**/*.log -whitespace
+docs/batch-ab/evidence/*.log -whitespace
