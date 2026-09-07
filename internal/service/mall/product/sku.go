@@ -2,12 +2,14 @@ package product
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/samber/lo"
 	product2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/product"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 )
 
@@ -37,6 +39,15 @@ func (s *ProductSkuService) SetSpuService(spuSvc *ProductSpuService) {
 func (s *ProductSkuService) ValidateSkuList(ctx context.Context, skus []*product2.ProductSkuSaveReq, specType bool) error {
 	if len(skus) == 0 {
 		return product.ErrSkuNotExists // 使用商品模块错误码
+	}
+
+	for _, sku := range skus {
+		if sku == nil || sku.Price < 0 || sku.MarketPrice < 0 || sku.CostPrice < 0 || sku.Stock < 0 {
+			return fmt.Errorf("SKU 参数不合法")
+		}
+	}
+	if !specType && len(skus) != 1 {
+		return fmt.Errorf("单规格商品只能有一个 SKU")
 	}
 
 	// 单规格，覆盖默认属性
@@ -118,7 +129,7 @@ func (s *ProductSkuService) ValidateSkuList(ctx context.Context, skus []*product
 		// 生成key（对齐Java的Collectors.joining()）
 		key := ""
 		for _, id := range valueIDs {
-			key += strconv.FormatInt(id, 10)
+			key += strconv.FormatInt(id, 10) + ","
 		}
 
 		if skuAttrValues[key] {
@@ -132,75 +143,76 @@ func (s *ProductSkuService) ValidateSkuList(ctx context.Context, skus []*product
 
 // CreateSkuList 批量创建 SKU
 func (s *ProductSkuService) CreateSkuList(ctx context.Context, spuID int64, skuReqs []*product2.ProductSkuSaveReq) error {
-	skus := lo.Map(skuReqs, func(req *product2.ProductSkuSaveReq, _ int) *product.ProductSku {
-		return s.convertSkuReqToModel(spuID, req)
-	})
-	return s.q.ProductSku.WithContext(ctx).Create(skus...)
+	if len(skuReqs) == 0 {
+		return nil
+	}
+	skus := make([]*product.ProductSku, 0, len(skuReqs))
+	for _, req := range skuReqs {
+		if req == nil {
+			return fmt.Errorf("SKU 参数不能为空")
+		}
+		sku := s.convertSkuReqToModel(spuID, req)
+		sku.ID = 0
+		skus = append(skus, sku)
+	}
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, q *query.Query) error { return q.ProductSku.WithContext(ctx).Create(skus...) })
 }
 
-// UpdateSkuList 批量更新 SKU（完全对齐Java实现）
+// UpdateSkuList explicitly inserts new rows and updates existing rows owned by the SPU.
+// Selecting writable fields preserves zero values without overwriting sales/audit data.
 func (s *ProductSkuService) UpdateSkuList(ctx context.Context, spuID int64, skuReqs []*product2.ProductSkuSaveReq) error {
-	// 构建属性与 SKU 的映射关系（对齐Java第222-223行）
-	existingSkus, err := s.q.ProductSku.WithContext(ctx).Where(s.q.ProductSku.SpuID.Eq(spuID)).Find()
-	if err != nil {
-		return err
-	}
-
-	// 构建现有SKU的propertyKey映射（对齐Java的convertMap逻辑）
-	existsSkuMap := make(map[string]int64)
-	for _, sku := range existingSkus {
-		propertyKey := s.buildPropertyKey(sku)
-		existsSkuMap[propertyKey] = sku.ID
-	}
-
-	// 拆分三个集合，新插入的、需要更新的、需要删除的（对齐Java第225-241行）
-	var insertSkus []*product.ProductSku
-	var updateSkus []*product.ProductSku
-
-	allUpdateSkus := lo.Map(skuReqs, func(req *product2.ProductSkuSaveReq, _ int) *product.ProductSku {
-		return s.convertSkuReqToModel(spuID, req)
-	})
-
-	for _, sku := range allUpdateSkus {
-		propertiesKey := s.buildPropertyKey(sku)
-		// 1、找得到的，进行更新（对齐Java第232-237行）
-		if existsSkuId, exists := existsSkuMap[propertiesKey]; exists {
-			sku.ID = existsSkuId
-			updateSkus = append(updateSkus, sku)
-			delete(existsSkuMap, propertiesKey) // 从映射中移除，剩余的就是要删除的
-		} else {
-			// 2、找不到，进行插入（对齐Java第238-240行）
-			sku.SpuID = spuID
-			insertSkus = append(insertSkus, sku)
-		}
-	}
-
-	// 执行最终的批量操作（对齐Java第244-252行）
-	if len(insertSkus) > 0 {
-		if err := s.q.ProductSku.WithContext(ctx).Create(insertSkus...); err != nil {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, q *query.Query) error {
+		u := q.ProductSku
+		existing, err := u.WithContext(ctx).Where(u.SpuID.Eq(spuID)).Find()
+		if err != nil {
 			return err
 		}
-	}
-
-	if len(updateSkus) > 0 {
-		for _, sku := range updateSkus {
-			if _, err := s.q.ProductSku.WithContext(ctx).Where(s.q.ProductSku.ID.Eq(sku.ID)).Updates(sku); err != nil {
+		byID := make(map[int64]*product.ProductSku, len(existing))
+		byProperties := make(map[string]int64, len(existing))
+		for _, sku := range existing {
+			byID[sku.ID] = sku
+			byProperties[s.buildPropertyKey(sku)] = sku.ID
+		}
+		used := make(map[int64]bool, len(skuReqs))
+		for _, req := range skuReqs {
+			if req == nil {
+				return fmt.Errorf("SKU 参数不能为空")
+			}
+			sku := s.convertSkuReqToModel(spuID, req)
+			if sku.ID == 0 {
+				sku.ID = byProperties[s.buildPropertyKey(sku)]
+			}
+			if sku.ID == 0 {
+				if err := u.WithContext(ctx).Create(sku); err != nil {
+					return err
+				}
+			} else {
+				if byID[sku.ID] == nil || used[sku.ID] {
+					return product.ErrSkuNotExists
+				}
+				info, err := u.WithContext(ctx).Where(u.ID.Eq(sku.ID), u.SpuID.Eq(spuID)).Select(u.Properties, u.Price, u.MarketPrice, u.CostPrice, u.BarCode, u.PicURL, u.Stock, u.Weight, u.Volume, u.FirstBrokeragePrice, u.SecondBrokeragePrice).Updates(sku)
+				if err != nil {
+					return err
+				}
+				if info.RowsAffected != 1 {
+					return product.ErrSkuNotExists
+				}
+			}
+			used[sku.ID] = true
+		}
+		var removed []int64
+		for _, sku := range existing {
+			if !used[sku.ID] {
+				removed = append(removed, sku.ID)
+			}
+		}
+		if len(removed) > 0 {
+			if _, err := u.WithContext(ctx).Where(u.SpuID.Eq(spuID), u.ID.In(removed...)).Delete(); err != nil {
 				return err
 			}
 		}
-	}
-
-	if len(existsSkuMap) > 0 {
-		deleteIDs := make([]int64, 0, len(existsSkuMap))
-		for _, id := range existsSkuMap {
-			deleteIDs = append(deleteIDs, id)
-		}
-		if _, err := s.q.ProductSku.WithContext(ctx).Where(s.q.ProductSku.ID.In(deleteIDs...)).Delete(); err != nil {
-			return err
-		}
-	}
-
-	return nil
+		return nil
+	})
 }
 
 // buildPropertyKey 构建属性key（完全对齐Java ProductSkuConvert.buildPropertyKey方法）
@@ -226,6 +238,7 @@ func (s *ProductSkuService) buildPropertyKey(sku *product.ProductSku) string {
 	var key strings.Builder
 	for _, prop := range properties {
 		key.WriteString(strconv.FormatInt(prop.ValueID, 10))
+		key.WriteByte(',')
 	}
 
 	return key.String()
@@ -233,7 +246,8 @@ func (s *ProductSkuService) buildPropertyKey(sku *product.ProductSku) string {
 
 // DeleteSkuBySpuId 删除指定 SPU 的所有 SKU
 func (s *ProductSkuService) DeleteSkuBySpuId(ctx context.Context, spuID int64) error {
-	_, err := s.q.ProductSku.WithContext(ctx).Where(s.q.ProductSku.SpuID.Eq(spuID)).Delete()
+	q := repo.QueryFromContext(ctx, s.q)
+	_, err := q.ProductSku.WithContext(ctx).Where(q.ProductSku.SpuID.Eq(spuID)).Delete()
 	return err
 }
 
@@ -356,68 +370,73 @@ func (s *ProductSkuService) UpdateSkuPropertyValue(ctx context.Context, valueID 
 
 // UpdateSkuStock 更新 SKU 库存（完全对齐Java实现）
 func (s *ProductSkuService) UpdateSkuStock(ctx context.Context, updateReq *product2.ProductSkuUpdateStockReq) error {
-	// 更新 SKU 库存（对齐Java第259-268行）
-	for _, item := range updateReq.Items {
-		if item.IncrCount > 0 {
-			// 增加库存：同时更新stock和sales_count（对齐Java updateStockIncr方法）
-			_, err := s.q.ProductSku.WithContext(ctx).
-				Where(s.q.ProductSku.ID.Eq(item.ID)).
-				Updates(map[string]interface{}{
-					"stock":       s.q.ProductSku.Stock.Add(int(item.IncrCount)),
-					"sales_count": s.q.ProductSku.SalesCount.Sub(int(item.IncrCount)),
-				})
-			if err != nil {
-				return err
-			}
-		} else if item.IncrCount < 0 {
-			// 减少库存：检查库存充足性，同时更新stock和sales_count（对齐Java updateStockDecr方法）
-			decrCount := -item.IncrCount // 取正数
-			result, err := s.q.ProductSku.WithContext(ctx).
-				Where(
-					s.q.ProductSku.ID.Eq(item.ID),
-					s.q.ProductSku.Stock.Gte(int(decrCount)),
-				).
-				Updates(map[string]interface{}{
-					"stock":       s.q.ProductSku.Stock.Sub(int(decrCount)),
-					"sales_count": s.q.ProductSku.SalesCount.Add(int(decrCount)),
-				})
-			if err != nil {
-				return err
-			}
-			if result.RowsAffected == 0 {
-				return product.ErrSkuStockNotEnough // 使用商品模块错误码
-			}
-		}
-	}
-
-	// 更新 SPU 库存（对齐Java第270-275行）
-	if s.spuSvc != nil {
-		// 获取SKU列表
-		skuIDs := lo.Map(updateReq.Items, func(item product2.ProductSkuUpdateStockItemReq, _ int) int64 {
-			return item.ID
-		})
-		skus, err := s.q.ProductSku.WithContext(ctx).Where(s.q.ProductSku.ID.In(skuIDs...)).Find()
-		if err != nil {
-			return err
-		}
-
-		// 构建SPU库存变化映射（对齐Java ProductSkuConvert.convertSpuStockMap）
-		skuMap := lo.KeyBy(skus, func(sku *product.ProductSku) int64 { return sku.ID })
-		spuStockIncr := make(map[int64]int)
-
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, q *query.Query) error {
+		// 更新 SKU 库存
 		for _, item := range updateReq.Items {
-			if sku, exists := skuMap[item.ID]; exists {
-				spuStockIncr[sku.SpuID] += item.IncrCount
+			if item.IncrCount > 0 {
+				// 增加库存：同时更新stock和sales_count（对齐Java updateStockIncr方法）
+				result, err := q.ProductSku.WithContext(ctx).
+					Where(q.ProductSku.ID.Eq(item.ID)).
+					Updates(map[string]interface{}{
+						"stock":       q.ProductSku.Stock.Add(int(item.IncrCount)),
+						"sales_count": q.ProductSku.SalesCount.Sub(int(item.IncrCount)),
+					})
+				if err != nil {
+					return err
+				}
+				if result.RowsAffected != 1 {
+					return product.ErrSkuNotExists
+				}
+			} else if item.IncrCount < 0 {
+				// 减少库存：检查库存充足性，同时更新stock和sales_count（对齐Java updateStockDecr方法）
+				decrCount := -item.IncrCount // 取正数
+				result, err := q.ProductSku.WithContext(ctx).
+					Where(
+						q.ProductSku.ID.Eq(item.ID),
+						q.ProductSku.Stock.Gte(int(decrCount)),
+					).
+					Updates(map[string]interface{}{
+						"stock":       q.ProductSku.Stock.Sub(int(decrCount)),
+						"sales_count": q.ProductSku.SalesCount.Add(int(decrCount)),
+					})
+				if err != nil {
+					return err
+				}
+				if result.RowsAffected == 0 {
+					return product.ErrSkuStockNotEnough // 使用商品模块错误码
+				}
 			}
 		}
 
-		// 调用SPU服务更新库存
-		if err := s.spuSvc.UpdateSpuStock(ctx, spuStockIncr); err != nil {
-			return err
-		}
-	}
+		// 更新 SPU 库存（对齐Java第270-275行）
+		if s.spuSvc != nil {
+			// 获取SKU列表
+			skuIDs := lo.Map(updateReq.Items, func(item product2.ProductSkuUpdateStockItemReq, _ int) int64 {
+				return item.ID
+			})
+			skus, err := q.ProductSku.WithContext(ctx).Where(q.ProductSku.ID.In(skuIDs...)).Find()
+			if err != nil {
+				return err
+			}
 
-	return nil
+			// 构建SPU库存变化映射（对齐Java ProductSkuConvert.convertSpuStockMap）
+			skuMap := lo.KeyBy(skus, func(sku *product.ProductSku) int64 { return sku.ID })
+			spuStockIncr := make(map[int64]int)
+
+			for _, item := range updateReq.Items {
+				if sku, exists := skuMap[item.ID]; exists {
+					spuStockIncr[sku.SpuID] += item.IncrCount
+				}
+			}
+
+			// 调用SPU服务更新库存
+			if err := s.spuSvc.UpdateSpuStock(ctx, spuStockIncr); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 // GetSku 获得 SKU 信息

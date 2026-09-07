@@ -2,6 +2,7 @@ package trade
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/samber/lo"
@@ -9,6 +10,7 @@ import (
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	productSvc "github.com/wxlbd/ruoyi-mall-go/internal/service/mall/product"
 	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
@@ -152,7 +154,7 @@ func (s *CartService) ResetCart(ctx context.Context, userId int64, r *trade2.App
 
 // DeleteCart 删除购物车
 func (s *CartService) DeleteCart(ctx context.Context, userId int64, ids []int64) error {
-	c := s.q.Cart
+	c := repo.QueryFromContext(ctx, s.q).Cart
 	_, err := c.WithContext(ctx).Where(c.UserID.Eq(userId), c.ID.In(ids...)).Delete()
 	return err
 }
@@ -160,9 +162,9 @@ func (s *CartService) DeleteCart(ctx context.Context, userId int64, ids []int64)
 // GetCartCount 获取购物车商品数量
 func (s *CartService) GetCartCount(ctx context.Context, userId int64) (int, error) {
 	c := s.q.Cart
-	var total int
+	var total sql.NullInt64
 	err := c.WithContext(ctx).Where(c.UserID.Eq(userId)).Select(c.Count.Sum()).Scan(&total)
-	return total, err
+	return int(total.Int64), err
 }
 
 // GetCartList 获取购物车列表

@@ -9,6 +9,7 @@ import (
 	promotion2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/app/mall/promotion"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/promotion"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 
@@ -245,7 +246,8 @@ func (s *CouponUserService) CalculateCoupon(ctx context.Context, userId int64, c
 
 // UseCoupon 核销优惠券
 func (s *CouponUserService) UseCoupon(ctx context.Context, userId int64, couponId int64, orderId int64) error {
-	coupon, err := s.q.PromotionCoupon.WithContext(ctx).Where(s.q.PromotionCoupon.ID.Eq(couponId), s.q.PromotionCoupon.UserID.Eq(userId)).First()
+	q := repo.QueryFromContext(ctx, s.q)
+	coupon, err := q.PromotionCoupon.WithContext(ctx).Where(q.PromotionCoupon.ID.Eq(couponId), q.PromotionCoupon.UserID.Eq(userId)).First()
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return errors.New("优惠券不存在")
@@ -265,11 +267,14 @@ func (s *CouponUserService) UseCoupon(ctx context.Context, userId int64, couponI
 
 	// Update Status
 	// Use map for updates to include UsedTime
-	_, err = s.q.PromotionCoupon.WithContext(ctx).Where(s.q.PromotionCoupon.ID.Eq(couponId)).Updates(map[string]interface{}{
+	info, err := q.PromotionCoupon.WithContext(ctx).Where(q.PromotionCoupon.ID.Eq(couponId), q.PromotionCoupon.UserID.Eq(userId), q.PromotionCoupon.Status.Eq(consts.CouponStatusUnused), q.PromotionCoupon.ValidStartTime.Lte(now), q.PromotionCoupon.ValidEndTime.Gte(now)).Updates(map[string]interface{}{
 		"status":       consts.CouponStatusUsed, // 已使用
 		"use_order_id": orderId,
 		"use_time":     now,
 	})
+	if err == nil && info.RowsAffected != 1 {
+		return errors.New("优惠券已被使用或已失效")
+	}
 	return err
 }
 
@@ -378,5 +383,18 @@ func (s *CouponUserService) ReturnCoupon(ctx context.Context, userId int64, coup
 		"use_time":     nil,
 	}
 	_, err = s.q.PromotionCoupon.WithContext(ctx).Where(s.q.PromotionCoupon.ID.Eq(couponId)).Updates(updates)
+	return err
+}
+
+// ReturnCouponForOrder only releases the coupon held by this order.
+func (s *CouponUserService) ReturnCouponForOrder(ctx context.Context, userId, couponId, orderId int64) error {
+	q := repo.QueryFromContext(ctx, s.q)
+	c := q.PromotionCoupon
+	info, err := c.WithContext(ctx).Where(c.ID.Eq(couponId), c.UserID.Eq(userId), c.Status.Eq(consts.CouponStatusUsed), c.UseOrderID.Eq(orderId)).Updates(map[string]interface{}{
+		"status": consts.CouponStatusUnused, "use_order_id": 0, "use_time": nil,
+	})
+	if err == nil && info.RowsAffected != 1 {
+		return errors.New("优惠券未被此订单使用")
+	}
 	return err
 }

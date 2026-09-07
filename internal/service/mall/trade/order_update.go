@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
 	memberContract "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
@@ -15,6 +17,7 @@ import (
 	memberModel "github.com/wxlbd/ruoyi-mall-go/internal/model/member"
 	tradeModel "github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/pkg/area"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/member"
 	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
@@ -623,6 +626,18 @@ func (s *TradeOrderUpdateService) calculatePrice(ctx context.Context, userId int
 // 重要变更：对齐 Java 行为，将支付订单创建纳入事务流程
 // 如果支付订单创建失败，整个订单创建失败并回滚
 func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64, userIP string, terminal int, createReq *trade2.AppTradeOrderCreateReq) (*tradeModel.TradeOrder, error) {
+	if createReq == nil || len(createReq.Items) == 0 {
+		return nil, pkgErrors.NewBizError(1004003001, "订单商品不能为空")
+	}
+	for _, item := range createReq.Items {
+		if item.Count <= 0 {
+			return nil, pkgErrors.NewBizError(1004003001, "商品数量必须大于零")
+		}
+	}
+	if (createReq.SeckillActivityID != nil && *createReq.SeckillActivityID != 0) || (createReq.CombinationActivityID != nil && *createReq.CombinationActivityID != 0) || (createReq.CombinationHeadID != nil && *createReq.CombinationHeadID != 0) || (createReq.BargainRecordID != nil && *createReq.BargainRecordID != 0) || (createReq.PointActivityID != nil && *createReq.PointActivityID != 0) {
+		return nil, pkgErrors.NewBizError(1004003001, "暂不支持此营销活动订单")
+	}
+
 	s.logger.Info("开始创建订单",
 		zap.Int64("userId", userId),
 		zap.Int("itemCount", len(createReq.Items)),
@@ -642,6 +657,10 @@ func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64,
 		return nil, err
 	}
 
+	if priceResp.Price.PayPrice <= 0 {
+		return nil, pkgErrors.NewBizError(1004003001, "暂不支持零元订单")
+	}
+
 	// 1.2 构建订单
 	order := s.buildTradeOrder(ctx, userId, userIP, terminal, createReq, priceResp)
 	orderItems := s.buildTradeOrderItems(order, priceResp)
@@ -657,7 +676,7 @@ func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64,
 
 	// 3. 保存订单（事务）
 	// 对齐 Java：整个订单创建流程（包括支付订单）在同一事务语义下
-	err = s.q.Transaction(func(tx *query.Query) error {
+	err = repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 3.1 插入订单
 		if err := tx.TradeOrder.WithContext(ctx).Create(order); err != nil {
 			return err
@@ -671,6 +690,10 @@ func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64,
 			return err
 		}
 
+		if err := s.executeAfterOrderCreate(ctx, order, orderItems); err != nil {
+			return err
+		}
+
 		// 3.3 创建支付订单（对齐 Java: afterCreateTradeOrder 中的 createPayOrder）
 		// 重要：将支付订单创建移入事务，如果失败则回滚订单
 		if order.PayPrice > 0 {
@@ -680,6 +703,20 @@ func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64,
 			}
 		}
 
+		var cartIDs []int64
+		for _, item := range createReq.Items {
+			if item.CartID > 0 {
+				cartIDs = append(cartIDs, item.CartID)
+			}
+		}
+		if len(cartIDs) > 0 {
+			if err := s.cartSvc.DeleteCart(ctx, order.UserID, cartIDs); err != nil {
+				return err
+			}
+		}
+		if err := s.createOrderLogWithOrder(ctx, order, 1, "用户下单"); err != nil {
+			return err
+		}
 		createdOrder = order
 		return nil
 	})
@@ -688,9 +725,6 @@ func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64,
 		s.logger.Error("订单保存失败", zap.Error(err))
 		return nil, err
 	}
-
-	// 4. 订单创建后的非关键逻辑（不影响主流程）
-	s.afterCreateTradeOrderNonCritical(ctx, createdOrder, orderItems, createReq)
 
 	s.logger.Info("订单创建成功",
 		zap.Int64("userId", userId),
@@ -797,6 +831,7 @@ func (s *TradeOrderUpdateService) buildTradeOrderItems(order *tradeModel.TradeOr
 	for _, item := range priceResp.Items {
 		orderItem := &tradeModel.TradeOrderItem{
 			OrderID:       order.ID,
+			CartID:        item.CartID,
 			UserID:        order.UserID,
 			SpuID:         item.SpuID,
 			SkuID:         item.SkuID,
@@ -818,48 +853,6 @@ func (s *TradeOrderUpdateService) buildTradeOrderItems(order *tradeModel.TradeOr
 	}
 
 	return orderItems
-}
-
-// afterCreateTradeOrder 订单创建后的后置逻辑
-// 对应 Java: TradeOrderUpdateServiceImpl#afterCreateTradeOrder
-func (s *TradeOrderUpdateService) afterCreateTradeOrder(ctx context.Context, order *tradeModel.TradeOrder, orderItems []*tradeModel.TradeOrderItem, createReq *trade2.AppTradeOrderCreateReq) error {
-	// 1. 执行订单创建后置处理器
-	// 对应 Java: tradeOrderHandlers.forEach(handler -> handler.afterOrderCreate(order, orderItems))
-	if err := s.executeAfterOrderCreate(ctx, order, orderItems); err != nil {
-		s.logger.Error("订单创建后置处理器执行失败", zap.Error(err))
-		// 后置处理失败不影响主流程，仅记录日志
-	}
-
-	// 2. 删除购物车商品
-	var cartIDs []int64
-	for _, item := range createReq.Items {
-		if item.CartID > 0 {
-			cartIDs = append(cartIDs, item.CartID)
-		}
-	}
-	if len(cartIDs) > 0 {
-		if err := s.cartSvc.DeleteCart(ctx, order.UserID, cartIDs); err != nil {
-			s.logger.Error("删除购物车失败", zap.Error(err))
-			// 不影响主流程
-		}
-	}
-
-	// 3. 生成预支付订单
-	if order.PayPrice > 0 {
-		if err := s.createPayOrder(ctx, order, orderItems); err != nil {
-			s.logger.Error("创建支付订单失败", zap.Error(err))
-			return err
-		}
-	}
-
-	// 4. 插入订单日志
-	// 订单操作类型：1-创建订单
-	if err := s.createOrderLogWithOrder(ctx, order, 1, "用户下单"); err != nil {
-		s.logger.Error("创建订单日志失败", zap.Error(err))
-		// 日志创建失败不影响主流程
-	}
-
-	return nil
 }
 
 // createPayOrderInTx 在事务中创建支付订单
@@ -916,7 +909,7 @@ func (s *TradeOrderUpdateService) createPayOrderInTx(ctx context.Context, tx *qu
 	}
 
 	// 4. 调用支付服务创建支付订单
-	// 注意：外部服务调用无法回滚，但如果失败，事务会回滚订单数据
+	// 仅创建本地支付记录；支付服务从 ctx 取得同一个事务，不调用支付渠道。
 	payOrderID, err := s.paySvc.CreateOrder(ctx, createReq)
 	if err != nil {
 		s.logger.Error("调用支付系统创建订单失败", zap.Error(err))
@@ -924,7 +917,7 @@ func (s *TradeOrderUpdateService) createPayOrderInTx(ctx context.Context, tx *qu
 	}
 
 	// 5. 在事务中更新交易订单的支付单编号
-	_, err = tx.TradeOrder.WithContext(ctx).
+	info, err := tx.TradeOrder.WithContext(ctx).
 		Where(tx.TradeOrder.ID.Eq(order.ID)).
 		Update(tx.TradeOrder.PayOrderID, payOrderID)
 	if err != nil {
@@ -932,101 +925,10 @@ func (s *TradeOrderUpdateService) createPayOrderInTx(ctx context.Context, tx *qu
 		return err
 	}
 
+	if info.RowsAffected != 1 {
+		return fmt.Errorf("交易订单支付关联更新失败")
+	}
 	// 6. 更新内存中的订单对象，确保返回值包含 payOrderId
-	order.PayOrderID = &payOrderID
-	s.logger.Info("支付订单创建成功",
-		zap.Int64("orderId", order.ID),
-		zap.Int64("payOrderId", payOrderID),
-	)
-
-	return nil
-}
-
-// afterCreateTradeOrderNonCritical 订单创建后的非关键后置逻辑
-// 这些操作失败不会影响订单创建的成功状态
-// 对应 Java: afterCreateTradeOrder 中除 createPayOrder 外的其他逻辑
-func (s *TradeOrderUpdateService) afterCreateTradeOrderNonCritical(ctx context.Context, order *tradeModel.TradeOrder, orderItems []*tradeModel.TradeOrderItem, createReq *trade2.AppTradeOrderCreateReq) {
-	// 1. 执行订单创建后置处理器
-	// 对应 Java: tradeOrderHandlers.forEach(handler -> handler.afterOrderCreate(order, orderItems))
-	if err := s.executeAfterOrderCreate(ctx, order, orderItems); err != nil {
-		s.logger.Error("订单创建后置处理器执行失败", zap.Error(err))
-		// 后置处理失败不影响主流程，仅记录日志
-	}
-
-	// 2. 删除购物车商品
-	var cartIDs []int64
-	for _, item := range createReq.Items {
-		if item.CartID > 0 {
-			cartIDs = append(cartIDs, item.CartID)
-		}
-	}
-	if len(cartIDs) > 0 {
-		if err := s.cartSvc.DeleteCart(ctx, order.UserID, cartIDs); err != nil {
-			s.logger.Error("删除购物车失败", zap.Error(err))
-			// 不影响主流程
-		}
-	}
-
-	// 3. 插入订单日志
-	// 订单操作类型：1-创建订单
-	if err := s.createOrderLogWithOrder(ctx, order, 1, "用户下单"); err != nil {
-		s.logger.Error("创建订单日志失败", zap.Error(err))
-		// 日志创建失败不影响主流程
-	}
-}
-
-// createPayOrder 创建支付订单
-// 对应 Java: payOrderApi.createOrder
-func (s *TradeOrderUpdateService) createPayOrder(ctx context.Context, order *tradeModel.TradeOrder, orderItems []*tradeModel.TradeOrderItem) error {
-	s.logger.Info("创建支付订单",
-		zap.Int64("orderId", order.ID),
-		zap.Int("payPrice", order.PayPrice),
-	)
-
-	// 1. 获取交易配置，得到 AppID
-	tradeConfig, err := s.configSvc.GetTradeConfig(ctx)
-	if err != nil {
-		s.logger.Error("获取交易配置失败", zap.Error(err))
-		return err
-	}
-
-	// 2. 获取支付应用信息，得到 AppKey
-	payApp, err := s.payAppSvc.GetApp(ctx, tradeConfig.AppID)
-	if err != nil {
-		s.logger.Error("获取支付应用失败",
-			zap.Int64("appId", tradeConfig.AppID),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	// 3. 构建支付订单创建请求
-	createReq := &pay.PayOrderCreateReq{
-		AppKey:          payApp.AppKey,
-		MerchantOrderId: order.No,
-		Subject:         fmt.Sprintf("订单编号：%s", order.No),
-		Body:            s.buildPayBody(orderItems),
-		Price:           order.PayPrice,
-		ExpireTime:      time.Now().Add(time.Duration(tradeConfig.PayTimeoutMinutes) * time.Minute),
-		UserIP:          order.UserIP,
-	}
-
-	// 4. 调用支付服务创建支付订单
-	payOrderID, err := s.paySvc.CreateOrder(ctx, createReq)
-	if err != nil {
-		s.logger.Error("调用支付系统创建订单失败", zap.Error(err))
-		return err
-	}
-
-	// 5. 更新交易订单的支付单编号
-	_, err = s.q.TradeOrder.WithContext(ctx).
-		Where(s.q.TradeOrder.ID.Eq(order.ID)).
-		Update(s.q.TradeOrder.PayOrderID, payOrderID)
-	if err != nil {
-		s.logger.Error("更新交易订单支付单编号失败", zap.Error(err))
-		return err
-	}
-
 	order.PayOrderID = &payOrderID
 	s.logger.Info("支付订单创建成功",
 		zap.Int64("orderId", order.ID),
@@ -1087,11 +989,7 @@ func (s *TradeOrderUpdateService) UpdateOrderPaid(ctx context.Context, orderId i
 
 // generateOrderNo 生成订单编号
 func (s *TradeOrderUpdateService) generateOrderNo() string {
-	// 格式: 时间戳 + 随机数
-	// 例如: 20231225143012345678
-	timestamp := time.Now().Format("20060102150405")
-	random := rand.Intn(1000000)
-	return fmt.Sprintf("%s%06d", timestamp, random)
+	return strings.ReplaceAll(uuid.NewString(), "-", "")
 }
 
 // generatePickUpVerifyCode 生成自提核销码
@@ -1296,6 +1194,7 @@ func (s *TradeOrderUpdateService) executeAfterOrderCreate(ctx context.Context, o
 				zap.String("handler", handler.GetHandlerType()),
 				zap.Error(err),
 			)
+			return err
 		}
 	}
 
@@ -1327,6 +1226,7 @@ func (s *TradeOrderUpdateService) executeAfterCancelOrder(ctx context.Context, o
 				zap.String("handler", handler.GetHandlerType()),
 				zap.Error(err),
 			)
+			return err
 		}
 	}
 
@@ -1430,7 +1330,7 @@ func (s *TradeOrderUpdateService) createOrderLogWithOrder(ctx context.Context, o
 		Content:     content,
 	}
 
-	return s.q.TradeOrderLog.WithContext(ctx).Create(log)
+	return repo.QueryFromContext(ctx, s.q).TradeOrderLog.WithContext(ctx).Create(log)
 }
 
 // parseTimeString 解析时间字符串
@@ -1462,6 +1362,10 @@ func (s *TradeOrderUpdateService) parseTimeString(timeStr string) *time.Time {
 // CancelOrder 取消订单
 // 对应 Java: TradeOrderUpdateServiceImpl#cancelOrderByMember
 func (s *TradeOrderUpdateService) CancelOrder(ctx context.Context, userId int64, orderId int64) error {
+	return s.cancelUnpaidOrder(ctx, userId, orderId, consts.OrderCancelTypeMember)
+}
+
+func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId, orderId int64, cancelType int) error {
 	s.logger.Info("开始取消订单",
 		zap.Int64("userId", userId),
 		zap.Int64("orderId", orderId),
@@ -1494,18 +1398,22 @@ func (s *TradeOrderUpdateService) CancelOrder(ctx context.Context, userId int64,
 	}
 
 	// 4. 取消订单（使用事务）
-	err = s.q.Transaction(func(tx *query.Query) error {
+	err = repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 4.1 更新订单状态为已取消
 		now := time.Now()
-		_, err := tx.TradeOrder.WithContext(ctx).
+		info, err := tx.TradeOrder.WithContext(ctx).
 			Where(tx.TradeOrder.ID.Eq(orderId), tx.TradeOrder.Status.Eq(order.Status)).
 			Updates(map[string]interface{}{
 				"status":      consts.TradeOrderStatusCanceled,
 				"cancel_time": now,
-				"cancel_type": consts.OrderCancelTypeMember,
+				"cancel_type": cancelType,
 			})
 		if err != nil {
 			return err
+		}
+
+		if info.RowsAffected != 1 {
+			return pkgErrors.NewBizError(1004001002, "订单状态已变更")
 		}
 
 		// 4.2 执行后置处理器（对应 Java: tradeOrderHandlers.forEach(handler -> handler.afterCancelOrder)）
@@ -1519,7 +1427,7 @@ func (s *TradeOrderUpdateService) CancelOrder(ctx context.Context, userId int64,
 		// 更新订单对象状态用于后置处理
 		order.Status = consts.TradeOrderStatusCanceled
 		order.CancelTime = &now
-		order.CancelType = consts.OrderCancelTypeMember
+		order.CancelType = cancelType
 
 		// 执行后置处理（库存回滚、优惠券回滚等）
 		if err := s.executeAfterCancelOrder(ctx, order, orderItems); err != nil {
@@ -1527,17 +1435,12 @@ func (s *TradeOrderUpdateService) CancelOrder(ctx context.Context, userId int64,
 			return err
 		}
 
-		return nil
+		return s.createOrderLogWithOrder(ctx, order, 5, "取消未支付订单")
 	})
 
 	if err != nil {
 		s.logger.Error("取消订单失败", zap.Error(err))
 		return err
-	}
-
-	// 5. 记录订单日志
-	if err := s.createOrderLogWithOrder(ctx, order, 5, "用户取消订单"); err != nil {
-		s.logger.Error("创建订单日志失败", zap.Error(err))
 	}
 
 	s.logger.Info("取消订单成功",
@@ -2013,44 +1916,7 @@ func (s *TradeOrderUpdateService) CancelOrderBySystem(ctx context.Context) (int6
 
 // cancelOrderBySystemSingle 单个订单系统取消逻辑
 func (s *TradeOrderUpdateService) cancelOrderBySystemSingle(ctx context.Context, order *tradeModel.TradeOrder) error {
-	// 1. 获取订单项
-	items, err := s.q.TradeOrderItem.WithContext(ctx).
-		Where(s.q.TradeOrderItem.OrderID.Eq(order.ID)).
-		Find()
-	if err != nil {
-		s.logger.Error("获取订单项失败", zap.Int64("orderId", order.ID), zap.Error(err))
-		return err
-	}
-	// 2. 将 items 设置到 order 对象中，用于后续流程（虽然 HandleOrder 内可能不用，但 executeAfter 需要）
-	// 注意：OrderHandleRequest 需要包含 CancelType
-
-	handleReq := &OrderHandleRequest{
-		Operation:    "cancel",
-		OrderID:      order.ID,
-		UserID:       order.UserID,
-		CancelType:   consts.OrderCancelTypeTimeout,
-		CancelReason: "支付超时取消",
-		OrderItems:   items, // 放入 Request 以便 Processor 可能使用
-	}
-
-	_, err = s.manager.HandleOrder(ctx, handleReq)
-	if err != nil {
-		return err
-	}
-
-	// 3. 执行后置处理（库存回滚、优惠券回滚等）
-	// 注意：订单对象的状态在 HandleOrder 中已被更新，但为了确保 executeAfterCancelOrder 获取到最新状态
-	order.Status = consts.TradeOrderStatusCanceled
-	now := time.Now()
-	order.CancelTime = &now
-	order.CancelType = consts.OrderCancelTypeTimeout
-
-	if err := s.executeAfterCancelOrder(ctx, order, items); err != nil {
-		s.logger.Error("执行取消订单后置处理失败", zap.Error(err))
-		return err
-	}
-
-	return nil
+	return s.cancelUnpaidOrder(ctx, order.UserID, order.ID, consts.OrderCancelTypeTimeout)
 }
 
 // ReceiveOrderBySystem 系统自动确认收货

@@ -47,6 +47,7 @@ type ProductSkuServiceAPI interface {
 type CouponUserServiceAPI interface {
 	UseCoupon(ctx context.Context, userId int64, id int64, orderId int64) error
 	ReturnCoupon(ctx context.Context, userId int64, id int64) error
+	ReturnCouponForOrder(ctx context.Context, userId, id, orderId int64) error
 	GetCoupon(ctx context.Context, userId int64, id int64) (*promotion.PromotionCoupon, error)
 }
 

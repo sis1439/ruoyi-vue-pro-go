@@ -3,6 +3,9 @@ package trade
 import (
 	"context"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/internal/model"
+	"github.com/wxlbd/ruoyi-mall-go/internal/service/member"
+	"strconv"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
@@ -86,9 +89,9 @@ func (p *CreateOrderProcessor) AfterOrderCreate(ctx context.Context, handleReq *
 
 	// 3. 扣减积分
 	if order.UsePoint > 0 {
-		if !p.memberSvc.UpdateUserPoint(ctx, order.UserID, -order.UsePoint) {
+		if err := member.NewMemberPointRecordService(p.q, nil).CreatePointRecord(ctx, order.UserID, -order.UsePoint, tradeModel.MemberPointBizTypeOrderUse, strconv.FormatInt(order.ID, 10)); err != nil {
 			p.logger.Error("扣减积分失败", zap.Int64("orderId", order.ID), zap.Int("usePoint", order.UsePoint))
-			return fmt.Errorf("扣减积分失败")
+			return err
 		}
 	}
 
@@ -201,7 +204,7 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 		now := time.Now()
 		updateData := map[string]interface{}{
 			"status":           tradeModel.TradeOrderStatusUndelivered,
-			"pay_status":       true,
+			"pay_status":       model.BitBool(true),
 			"pay_time":         now,
 			"pay_channel_code": payOrder.ChannelCode, // 记录支付渠道
 			"update_time":      now,
@@ -525,7 +528,7 @@ func (p *CancelOrderProcessor) AfterCancelOrder(ctx context.Context, handleReq *
 
 	// 2. 退还优惠券
 	if order.CouponID > 0 {
-		if err := p.couponSvc.ReturnCoupon(ctx, order.UserID, order.CouponID); err != nil {
+		if err := p.couponSvc.ReturnCouponForOrder(ctx, order.UserID, order.CouponID, order.ID); err != nil {
 			p.logger.Error("退还优惠券失败", zap.Error(err), zap.Int64("orderId", order.ID), zap.Int64("couponId", order.CouponID))
 			return err
 		}
@@ -533,9 +536,9 @@ func (p *CancelOrderProcessor) AfterCancelOrder(ctx context.Context, handleReq *
 
 	// 3. 退还积分
 	if order.UsePoint > 0 {
-		if !p.memberSvc.UpdateUserPoint(ctx, order.UserID, order.UsePoint) {
+		if err := member.NewMemberPointRecordService(p.q, nil).CreatePointRecord(ctx, order.UserID, order.UsePoint, tradeModel.MemberPointBizTypeOrderUseCancel, strconv.FormatInt(order.ID, 10)); err != nil {
 			p.logger.Error("退还积分失败", zap.Int64("orderId", order.ID), zap.Int("usePoint", order.UsePoint))
-			return fmt.Errorf("退还积分失败")
+			return err
 		}
 	}
 
