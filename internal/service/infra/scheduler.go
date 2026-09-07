@@ -10,6 +10,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"go.uber.org/zap"
 )
 
@@ -48,12 +49,10 @@ func NewScheduler(q *query.Query, log *zap.Logger, handlers []JobHandler) (*Sche
 		scheduler.RegisterHandler(handler.GetHandlerName(), handler)
 	}
 
-	// 在后台自动启动调度器
-	go func() {
-		if err := scheduler.Start(context.Background()); err != nil {
-			log.Error("Failed to start scheduler", zap.Error(err))
-		}
-	}()
+	if err := scheduler.Start(context.Background()); err != nil {
+		_ = s.Shutdown()
+		return nil, err
+	}
 
 	return scheduler, nil
 }
@@ -86,19 +85,28 @@ func (s *Scheduler) GetRegisteredHandlers() []string {
 
 // Start 从数据库加载所有启用的任务并启动调度器
 func (s *Scheduler) Start(ctx context.Context) error {
-	jobs, err := s.q.InfraJob.WithContext(ctx).Where(s.q.InfraJob.Status.Eq(JobStatusNormal)).Find()
+	t := s.q.SystemTenant
+	tenants, err := t.WithContext(ctx).Where(t.Status.Eq(0), t.ExpireDate.Gt(time.Now())).Find()
 	if err != nil {
 		return err
 	}
-
-	for _, job := range jobs {
-		if err := s.scheduleJob(ctx, job); err != nil {
-			s.log.Error("Failed to schedule job", zap.Int64("jobId", job.ID), zap.Error(err))
+	count := 0
+	for _, tenant := range tenants {
+		tenantCtx := pkgcontext.WithTenant(ctx, tenant.ID)
+		jobs, err := s.q.InfraJob.WithContext(tenantCtx).Where(s.q.InfraJob.Status.Eq(JobStatusNormal)).Find()
+		if err != nil {
+			return err
+		}
+		for _, job := range jobs {
+			if err := s.scheduleJob(tenantCtx, job); err != nil {
+				return err
+			}
+			count++
 		}
 	}
 
 	s.scheduler.Start()
-	s.log.Info("Scheduler started", zap.Int("jobCount", len(jobs)))
+	s.log.Info("Scheduler started", zap.Int("jobCount", count))
 	return nil
 }
 
@@ -109,6 +117,10 @@ func (s *Scheduler) Shutdown() error {
 
 // scheduleJob 将单个任务添加到调度器
 func (s *Scheduler) scheduleJob(ctx context.Context, job *model.InfraJob) error {
+	tenant, ok := pkgcontext.TenantID(ctx)
+	if !ok || job.TenantID != tenant {
+		return fmt.Errorf("job tenant context mismatch")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -135,6 +147,18 @@ func (s *Scheduler) scheduleJob(ctx context.Context, job *model.InfraJob) error 
 
 // executeJob 执行任务并记录结果
 func (s *Scheduler) executeJob(ctx context.Context, job *model.InfraJob, handler JobHandler) {
+	// Never retain an HTTP context: scheduled work restores the tenant from its persisted job.
+	if job.TenantID <= 0 {
+		s.log.Error("Refusing job without tenant", zap.Int64("jobId", job.ID))
+		return
+	}
+	ctx, cancel := context.WithTimeout(pkgcontext.WithTenant(context.Background(), job.TenantID), 5*time.Minute)
+	defer cancel()
+	tenants := s.q.SystemTenant
+	if _, err := tenants.WithContext(ctx).Where(tenants.ID.Eq(job.TenantID), tenants.Status.Eq(0), tenants.ExpireDate.Gt(time.Now())).First(); err != nil {
+		s.log.Error("Refusing job for unavailable tenant", zap.Int64("jobId", job.ID), zap.Error(err))
+		return
+	}
 	beginTime := time.Now()
 
 	logRecord := &model.InfraJobLog{
@@ -145,7 +169,10 @@ func (s *Scheduler) executeJob(ctx context.Context, job *model.InfraJob, handler
 		BeginTime:    beginTime,
 		Status:       0,
 	}
-	_ = s.q.InfraJobLog.WithContext(ctx).Create(logRecord)
+	if err := s.q.InfraJobLog.WithContext(ctx).Create(logRecord); err != nil {
+		s.log.Error("Failed to persist job start", zap.Int64("jobId", job.ID), zap.Error(err))
+		return
+	}
 
 	var status int
 	var result string
@@ -163,12 +190,15 @@ func (s *Scheduler) executeJob(ctx context.Context, job *model.InfraJob, handler
 		s.log.Info("Job execution completed", zap.Int64("jobId", job.ID), zap.Int("duration", duration))
 	}
 
-	_, _ = s.q.InfraJobLog.WithContext(ctx).Where(s.q.InfraJobLog.ID.Eq(logRecord.ID)).Updates(map[string]interface{}{
+	_, saveErr := s.q.InfraJobLog.WithContext(ctx).Where(s.q.InfraJobLog.ID.Eq(logRecord.ID)).Updates(map[string]interface{}{
 		"end_time": endTime,
 		"duration": duration,
 		"status":   status,
 		"result":   result,
 	})
+	if saveErr != nil {
+		s.log.Error("Failed to persist job result", zap.Int64("jobId", job.ID), zap.Error(saveErr))
+	}
 }
 
 // AddJob 向调度器添加新任务

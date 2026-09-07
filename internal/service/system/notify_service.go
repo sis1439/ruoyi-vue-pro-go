@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/system"
@@ -22,6 +21,7 @@ type NotifyTemplateRepository interface {
 	Update(ctx context.Context, template *model.SystemNotifyTemplate) error
 	Delete(ctx context.Context, id int64) error
 	FindByID(ctx context.Context, id int64) (*model.SystemNotifyTemplate, error)
+	FindByCode(ctx context.Context, code string) (*model.SystemNotifyTemplate, error)
 	Page(ctx context.Context, name, code string, status *int, pageNo, pageSize int) ([]*model.SystemNotifyTemplate, int64, error)
 }
 
@@ -40,9 +40,6 @@ type NotifyMessageRepository interface {
 type NotifyService struct {
 	templateRepo NotifyTemplateRepository
 	messageRepo  NotifyMessageRepository
-	// Cache
-	templateCache map[string]*model.SystemNotifyTemplate
-	mu            sync.RWMutex
 }
 
 func NewNotifyService(templateRepo NotifyTemplateRepository, messageRepo NotifyMessageRepository) *NotifyService {
@@ -50,22 +47,7 @@ func NewNotifyService(templateRepo NotifyTemplateRepository, messageRepo NotifyM
 		templateRepo: templateRepo,
 		messageRepo:  messageRepo,
 	}
-	s.RefreshCache()
 	return s
-}
-
-func (s *NotifyService) RefreshCache() {
-	list, err := s.templateRepo.FindAll(context.Background())
-	if err != nil {
-		return
-	}
-	m := make(map[string]*model.SystemNotifyTemplate)
-	for _, item := range list {
-		m[item.Code] = item
-	}
-	s.mu.Lock()
-	s.templateCache = m
-	s.mu.Unlock()
 }
 
 // ================= Template CRUD =================
@@ -83,7 +65,6 @@ func (s *NotifyService) CreateNotifyTemplate(ctx context.Context, r *system.Noti
 	if err := s.templateRepo.Create(ctx, template); err != nil {
 		return 0, err
 	}
-	s.RefreshCache()
 	return template.ID, nil
 }
 
@@ -101,7 +82,6 @@ func (s *NotifyService) UpdateNotifyTemplate(ctx context.Context, r *system.Noti
 	if err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -110,7 +90,6 @@ func (s *NotifyService) DeleteNotifyTemplate(ctx context.Context, id int64) erro
 	if err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -129,10 +108,11 @@ func (s *NotifyService) GetNotifyTemplatePage(ctx context.Context, r *system.Not
 // ================= Message Logic =================
 
 func (s *NotifyService) SendNotify(ctx context.Context, userID int64, userType int, templateCode string, params map[string]interface{}) (int64, error) {
-	s.mu.RLock()
-	template, ok := s.templateCache[templateCode]
-	s.mu.RUnlock()
-	if !ok || template == nil {
+	template, err := s.templateRepo.FindByCode(ctx, templateCode)
+	if err != nil {
+		return 0, err
+	}
+	if template == nil {
 		return 0, errors.NewBizError(1002006001, "站内信模板不存在")
 	}
 

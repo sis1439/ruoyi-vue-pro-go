@@ -10,10 +10,13 @@ import (
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	payrepo "github.com/wxlbd/ruoyi-mall-go/internal/repo/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/pay/client"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/config"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 
 	"gorm.io/gorm"
@@ -96,14 +99,18 @@ func (s *PayOrderService) GetOrderPage(ctx context.Context, req *pay2.PayOrderPa
 
 // CreateOrder 创建支付单
 func (s *PayOrderService) CreateOrder(ctx context.Context, reqDTO *pay2.PayOrderCreateReq) (int64, error) {
+	q := repo.QueryFromContext(ctx, s.q)
 	app, err := s.appSvc.ValidPayAppByAppKey(ctx, reqDTO.AppKey)
 	if err != nil {
 		return 0, err
 	}
 
-	existOrder, _ := s.q.PayOrder.WithContext(ctx).
-		Where(s.q.PayOrder.AppID.Eq(app.ID), s.q.PayOrder.MerchantOrderId.Eq(reqDTO.MerchantOrderId)).
+	existOrder, err := q.PayOrder.WithContext(ctx).
+		Where(q.PayOrder.AppID.Eq(app.ID), q.PayOrder.MerchantOrderId.Eq(reqDTO.MerchantOrderId)).
 		First()
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
 	if existOrder != nil {
 		return existOrder.ID, nil
 	}
@@ -122,7 +129,7 @@ func (s *PayOrderService) CreateOrder(ctx context.Context, reqDTO *pay2.PayOrder
 		UserIP:          reqDTO.UserIP,
 	}
 
-	if err := s.q.PayOrder.WithContext(ctx).Create(order); err != nil {
+	if err := q.PayOrder.WithContext(ctx).Create(order); err != nil {
 		return 0, err
 	}
 	return order.ID, nil
@@ -162,14 +169,9 @@ func (s *PayOrderService) SubmitOrder(ctx context.Context, reqVO *pay2.PayOrderS
 	}
 
 	// Get Pay Client
-	payClient := s.clientFac.GetPayClient(channel.ID)
-	if payClient == nil {
-		// Lazy create if not exists
-		var err error
-		payClient, err = s.clientFac.CreateOrUpdatePayClient(channel.ID, channel.Code, channel.Config.ToJSON())
-		if err != nil {
-			return nil, err
-		}
+	payClient, err := NewPayChannelService(s.q, s.clientFac).GetPayClient(ctx, channel.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Call UnifiedOrder (对齐 Java: 使用渠道特定的回调 URL)
@@ -191,17 +193,10 @@ func (s *PayOrderService) SubmitOrder(ctx context.Context, reqVO *pay2.PayOrderS
 
 	// ✅ 新增：处理直接支付成功的场景（对应 Java 163-180 行）
 	if unifiedResp != nil {
-		// 7.1 尝试异步处理支付结果（兼容并发）
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					// 记录日志但不中断主流程
-					fmt.Printf("[NotifyOrder Panic] order(%d) channel(%d): %v\n", order.ID, channel.ID, r)
-				}
-			}()
-			// 发起通知处理
-			s.NotifyOrder(ctx, channel.ID, unifiedResp)
-		}()
+		// Complete local notification before the request context is released; propagate failures.
+		if err := s.NotifyOrder(ctx, channel.ID, unifiedResp); err != nil {
+			return nil, err
+		}
 
 		// 7.2 检查渠道错误码并抛出异常
 		if unifiedResp.ChannelErrorCode != "" {
@@ -263,7 +258,10 @@ func (s *PayOrderService) ValidateOrderActuallyPaid(ctx context.Context, orderID
 	}
 
 	// 4. 获取支付客户端
-	payClient := s.clientFac.GetPayClient(ext.ChannelID)
+	payClient, err := NewPayChannelService(s.q, s.clientFac).GetPayClient(ctx, ext.ChannelID)
+	if err != nil {
+		return nil, err
+	}
 	if payClient == nil {
 		// 如果客户端不存在，则无法查询，直接返回
 		return order, nil
@@ -392,7 +390,10 @@ func (s *PayOrderService) SyncOrderQuietly(ctx context.Context, id int64) {
 // 对齐 Java: PayOrderServiceImpl.syncOrder(PayOrderExtensionDO)
 func (s *PayOrderService) syncOrder(ctx context.Context, orderExtension *pay.PayOrderExtension) bool {
 	// 1.1 查询支付订单信息
-	payClient := s.clientFac.GetPayClient(orderExtension.ChannelID)
+	payClient, err := NewPayChannelService(s.q, s.clientFac).GetPayClient(ctx, orderExtension.ChannelID)
+	if err != nil {
+		return false
+	}
 	if payClient == nil {
 		return false
 	}
@@ -721,4 +722,37 @@ func (s *PayOrderService) SyncOrder(ctx context.Context, minCreateTime time.Time
 		}
 	}
 	return count, nil
+}
+
+// ValidateMemberOrderOwner resolves the owner from the business record, not a client-supplied user ID.
+func (s *PayOrderService) ValidateMemberOrderOwner(ctx context.Context, payOrderID int64) error {
+	user := pkgContext.GetLoginUserFromContext(ctx)
+	if user == nil || user.UserType != consts.UserTypeMember || user.UserID <= 0 || payOrderID <= 0 {
+		return pkgErrors.NewBizError(403, "无权访问支付订单")
+	}
+	trade := s.q.TradeOrder
+	count, err := trade.WithContext(ctx).Where(trade.PayOrderID.Eq(payOrderID), trade.UserID.Eq(user.UserID)).Count()
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	recharge := s.q.PayWalletRecharge
+	record, err := recharge.WithContext(ctx).Where(recharge.PayOrderID.Eq(payOrderID)).First()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return pkgErrors.NewBizError(403, "无权访问支付订单")
+	}
+	if err != nil {
+		return err
+	}
+	wallet := s.q.PayWallet
+	count, err = wallet.WithContext(ctx).Where(wallet.ID.Eq(record.WalletID), wallet.UserID.Eq(user.UserID), wallet.UserType.Eq(user.UserType)).Count()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return pkgErrors.NewBizError(403, "无权访问支付订单")
+	}
+	return nil
 }

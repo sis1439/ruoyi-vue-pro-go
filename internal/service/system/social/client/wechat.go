@@ -10,6 +10,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/cache"
+	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/utils"
 
@@ -249,7 +250,11 @@ func (c *WeChatClient) CreateJsapiSignature(ctx context.Context, url string) (*J
 }
 
 func (c *WeChatClient) getJsapiTicket(ctx context.Context) (string, error) {
-	redisKey := fmt.Sprintf("wechat:jsapi_ticket:%s", c.Client.ClientId)
+	tenantID, ok := pkgcontext.TenantID(ctx)
+	if !ok || c.Client == nil || c.Client.TenantID != tenantID || c.Client.Status != 0 {
+		return "", fmt.Errorf("unavailable WeChat client for tenant")
+	}
+	redisKey := fmt.Sprintf("mall:tenant:%d:wechat:jsapi_ticket:%s", tenantID, c.Client.ClientId)
 
 	// 1. 尝试从缓存获取
 	if cache.RDB != nil {

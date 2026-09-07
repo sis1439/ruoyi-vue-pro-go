@@ -57,7 +57,7 @@ func (f *SmsClientFactory) createClient(channel *model.SystemSmsChannel) (client
 func (f *SmsClientFactory) InitClients(channels []*model.SystemSmsChannel) {
 	for _, channel := range channels {
 		if _, err := f.CreateOrUpdateClient(channel); err != nil {
-			zap.L().Error("初始化短信客户端失败", zap.String("code", channel.Code), zap.Error(err))
+			zap.L().Error("SMS client initialization failed", zap.Int64("channel_id", channel.ID))
 		}
 	}
 }

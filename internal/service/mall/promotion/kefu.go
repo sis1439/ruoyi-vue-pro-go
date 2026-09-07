@@ -183,7 +183,7 @@ func (s *kefuService) updateConversationLastMessage(ctx context.Context, convo *
 
 	// 2.2 会员用户发送消息时，如果管理员删除过会话则进行恢复
 	if msg.SenderType == 1 && bool(convo.AdminDeleted) {
-		updates["admin_deleted"] = false
+		updates["admin_deleted"] = model.BitBool(false)
 	}
 
 	_, err := convoRepo.WithContext(ctx).Where(convoRepo.ID.Eq(convo.ID)).Updates(updates)
@@ -236,7 +236,7 @@ func (s *kefuService) UpdateMessageReadStatus(ctx context.Context, conversationI
 		Where(msgRepo.ConversationID.Eq(conversationID)).
 		Where(msgRepo.SenderType.Eq(targetSenderType)).
 		Where(msgRepo.ReadStatus.Eq(model.BitBool(false))).
-		Update(msgRepo.ReadStatus, true)
+		Update(msgRepo.ReadStatus, model.BitBool(true))
 	if err != nil {
 		return err
 	}
@@ -466,7 +466,7 @@ func (s *kefuService) DeleteConversation(ctx context.Context, id int64) error {
 	}
 	// Soft delete for Admin (set admin_deleted = true)
 	convoRepo := s.q.PromotionKefuConversation
-	_, err := convoRepo.WithContext(ctx).Where(convoRepo.ID.Eq(id)).Update(convoRepo.AdminDeleted, true)
+	_, err := convoRepo.WithContext(ctx).Where(convoRepo.ID.Eq(id)).Update(convoRepo.AdminDeleted, model.BitBool(true))
 	return err
 }
 

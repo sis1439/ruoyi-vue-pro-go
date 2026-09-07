@@ -3,6 +3,7 @@ package pay
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -97,22 +98,27 @@ func (s *PayNotifyService) ExecuteNotify(ctx context.Context) (int, error) {
 	tasks, err := s.q.PayNotifyTask.WithContext(ctx).
 		Where(s.q.PayNotifyTask.Status.Eq(PayNotifyStatusWaiting)).
 		Where(s.q.PayNotifyTask.NextNotifyTime.Lt(now)).
+		Order(s.q.PayNotifyTask.NextNotifyTime, s.q.PayNotifyTask.ID).
+		Limit(20).
 		Find()
 	if err != nil {
 		return 0, err
 	}
 
 	count := 0
+	var failures error
 	for _, task := range tasks {
-		// 异步执行每个任务
-		go func(t *pay.PayNotifyTask) {
-			if err := s.executeNotifyTaskWithLock(ctx, t); err != nil {
-				s.logger.Error("executeNotifyTask failed", zap.Int64("taskId", t.ID), zap.Error(err))
-			}
-		}(task)
+		if err := ctx.Err(); err != nil {
+			return count, errors.Join(failures, err)
+		}
+		// Finish this bounded batch before the scheduler releases its tenant context.
+		if err := s.executeNotifyTaskWithLock(ctx, task); err != nil {
+			s.logger.Error("executeNotifyTask failed", zap.Int64("taskId", task.ID), zap.Error(err))
+			failures = errors.Join(failures, err)
+		}
 		count++
 	}
-	return count, nil
+	return count, failures
 }
 
 // executeNotifyTaskWithLock 使用分布式锁执行通知任务
@@ -168,7 +174,10 @@ func (s *PayNotifyService) executeNotifyTask(ctx context.Context, task *pay.PayN
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	reqBody := []byte("{}") // TODO: Build actual payload
-	req, _ := http.NewRequest("POST", task.NotifyURL, bytes.NewBuffer(reqBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", task.NotifyURL, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
@@ -216,13 +225,13 @@ func (s *PayNotifyService) executeNotifyTask(ctx context.Context, task *pay.PayN
 		}
 	}
 
-	s.q.PayNotifyTask.WithContext(ctx).Save(task)
+	if err := s.q.PayNotifyTask.WithContext(ctx).UnderlyingDB().Where("id = ?", task.ID).Select("*").Omit("id", "tenant_id", "creator", "create_time").Updates(task).Error; err != nil {
+		return err
+	}
 
 	// 3. Create Log
 	log.Status = task.Status // Use final status
-	s.q.PayNotifyLog.WithContext(ctx).Create(log)
-
-	return nil
+	return s.q.PayNotifyLog.WithContext(ctx).Create(log)
 }
 
 // GetNotifyTask 获得回调通知

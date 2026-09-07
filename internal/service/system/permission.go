@@ -2,6 +2,8 @@ package system
 
 import (
 	"context"
+	"errors"
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 
 	"github.com/samber/lo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
@@ -74,6 +76,14 @@ func (s *PermissionService) getAllMenuIds(ctx context.Context) ([]int64, error) 
 
 // AssignRoleMenu 赋予角色菜单
 func (s *PermissionService) AssignRoleMenu(ctx context.Context, roleId int64, menuIds []int64) error {
+	role, err := s.GetRoleById(ctx, roleId)
+	if err != nil {
+		return err
+	}
+	if reservedRole(role.Code) {
+		return errors.New("reserved role requires offline management")
+	}
+
 	// 使用事务
 	return s.q.Transaction(func(tx *query.Query) error {
 		// 1. 删除旧的角色菜单关联
@@ -107,6 +117,22 @@ func (s *PermissionService) AssignRoleDataScope(ctx context.Context, roleId int6
 
 // AssignUserRole 赋予用户角色
 func (s *PermissionService) AssignUserRole(ctx context.Context, userId int64, roleIds []int64) error {
+	if _, err := s.q.SystemUser.WithContext(ctx).Where(s.q.SystemUser.ID.Eq(userId)).First(); err != nil {
+		return err
+	}
+	if err := rejectReservedUser(ctx, s.q, userId); err != nil {
+		return err
+	}
+	for _, id := range lo.Uniq(roleIds) {
+		role, err := s.GetRoleById(ctx, id)
+		if err != nil {
+			return err
+		}
+		if reservedRole(role.Code) {
+			return errors.New("reserved role requires offline assignment")
+		}
+	}
+
 	return s.q.Transaction(func(tx *query.Query) error {
 		ur := tx.SystemUserRole
 		// 1. 删除旧的用户角色关联
@@ -133,6 +159,9 @@ func (s *PermissionService) AssignUserRole(ctx context.Context, userId int64, ro
 
 // IsSuperAdmin 检查用户是否为超级管理员
 func (s *PermissionService) IsSuperAdmin(ctx context.Context, userId int64) (bool, error) {
+	if err := s.ValidateAdminScope(ctx, userId); err != nil {
+		return false, err
+	}
 	roleIds, err := s.GetUserRoleIdListByUserId(ctx, userId)
 	if err != nil {
 		return false, err
@@ -161,4 +190,64 @@ func (s *PermissionService) GetRoleDeptIdListByRoleId(ctx context.Context, roleI
 		return []int64{}, nil
 	}
 	return []int64(role.DataScopeDeptIds), nil
+}
+
+// HasPermission rechecks current enabled roles and menus so cached Casbin grants cannot outlive revocation.
+func (s *PermissionService) HasPermission(ctx context.Context, userID int64, permission string) (bool, error) {
+	roleIDs, err := s.GetUserRoleIdListByUserId(ctx, userID)
+	if err != nil || len(roleIDs) == 0 {
+		return false, err
+	}
+	r := s.q.SystemRole
+	roles, err := r.WithContext(ctx).Where(r.ID.In(roleIDs...), r.Status.Eq(0)).Find()
+	if err != nil {
+		return false, err
+	}
+	enabled := make([]int64, 0, len(roles))
+	for _, role := range roles {
+		if role.DataScope != consts.DataScopeAll {
+			return false, nil
+		}
+		enabled = append(enabled, role.ID)
+	}
+	if len(enabled) == 0 {
+		return false, nil
+	}
+	rm := s.q.SystemRoleMenu
+	links, err := rm.WithContext(ctx).Where(rm.RoleID.In(enabled...)).Find()
+	if err != nil {
+		return false, err
+	}
+	ids := make([]int64, 0, len(links))
+	for _, link := range links {
+		ids = append(ids, link.MenuID)
+	}
+	if len(ids) == 0 {
+		return false, nil
+	}
+	m := s.q.SystemMenu
+	count, err := m.WithContext(ctx).Where(m.ID.In(ids...), m.Permission.Eq(permission), m.Status.Eq(0)).Count()
+	return count > 0, err
+}
+
+// ValidateAdminScope rejects unsupported persisted restrictions instead of treating them as All.
+func (s *PermissionService) ValidateAdminScope(ctx context.Context, userID int64) error {
+	ids, err := s.GetUserRoleIdListByUserId(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	r := s.q.SystemRole
+	roles, err := r.WithContext(ctx).Where(r.ID.In(ids...), r.Status.Eq(0)).Find()
+	if err != nil {
+		return err
+	}
+	for _, role := range roles {
+		if role.DataScope != consts.DataScopeAll {
+			return errors.New("configured role data scope is not enabled; tenant-wide RBAC only")
+		}
+	}
+	return nil
 }

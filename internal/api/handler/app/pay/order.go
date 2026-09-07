@@ -31,10 +31,14 @@ func (h *AppPayOrderHandler) GetOrder(c *gin.Context) {
 		return
 	}
 
+	if err := h.svc.ValidateMemberOrderOwner(c, id); err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
 	// 处理 sync 参数
 	sync := c.Query("sync") == "true"
 	order, err := h.svc.GetOrder(c, id)
-	if err == nil && sync && order.Status == paySvc.PayOrderStatusWaiting {
+	if err == nil && order != nil && sync && order.Status == paySvc.PayOrderStatusWaiting {
 		h.svc.SyncOrderQuietly(c, id)
 		// 重新拉取
 		order, _ = h.svc.GetOrder(c, id)
@@ -45,6 +49,10 @@ func (h *AppPayOrderHandler) GetOrder(c *gin.Context) {
 		return
 	}
 
+	if order == nil {
+		response.WriteSuccess(c, nil)
+		return
+	}
 	// 转换为对齐后的 VO
 	vo := &adminPay.PayOrderResp{
 		ID:              order.ID,
@@ -82,6 +90,10 @@ func (h *AppPayOrderHandler) Submit(c *gin.Context) {
 		return
 	}
 
+	if err := h.svc.ValidateMemberOrderOwner(c, r.ID); err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
 	// 1. 钱包支付处理
 	if r.ChannelCode == "wallet" {
 		if r.ChannelExtras == nil {

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/system"
@@ -35,6 +34,11 @@ func (m *CasbinMiddleware) RequirePermission(permission string) gin.HandlerFunc 
 			return
 		}
 
+		if user.UserType != 2 || m.permSvc == nil || m.enforcer == nil {
+			c.AbortWithStatusJSON(http.StatusForbidden, response.Error(403, "权限不足"))
+			return
+		}
+
 		// 1. 超级管理员直接放行
 		isSuper, err := m.permSvc.IsSuperAdmin(c.Request.Context(), user.UserID)
 		if err != nil {
@@ -46,24 +50,12 @@ func (m *CasbinMiddleware) RequirePermission(permission string) gin.HandlerFunc 
 			return
 		}
 
-		// 2. Casbin 鉴权
-		// Subject: user:{userId}
-		// Object: permission
-		// Action: access
-		// 注意：Adapter 加载的 g 策略是 g, user:{userId}, role:{roleId}
-		// Adapter 加载的 p 策略是 p, role:{roleId}, permission, access
-		// Casbin 会自动推导 user -> role -> permission
-		sub := fmt.Sprintf("user:%d", user.UserID)
-		ok, err := m.enforcer.Enforce(sub, permission, "access")
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, response.Error(500, "权限校验错误"))
-			return
-		}
-
-		if !ok {
+		allowed, err := m.permSvc.HasPermission(c.Request.Context(), user.UserID, permission)
+		if err != nil || !allowed {
 			c.AbortWithStatusJSON(http.StatusForbidden, response.Error(403, "权限不足"))
 			return
 		}
+		// Live database grants are authoritative; no stale startup cache can delay grants or revocations.
 
 		c.Next()
 	}

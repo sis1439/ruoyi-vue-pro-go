@@ -55,7 +55,11 @@ func (h *PayNotifyHandler) NotifyOrder(c *gin.Context) {
 	h.logger.Info("[NotifyOrder] 收到支付回调", zap.Int64("channelId", channelId))
 
 	// 1. 获取 PayClient
-	payClient := h.channelSvc.GetPayClient(channelId)
+	payClient, err := h.channelSvc.GetPayClient(c.Request.Context(), channelId)
+	if err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
 	if payClient == nil {
 		h.logger.Error("[NotifyOrder] 渠道编号找不到对应的支付客户端", zap.Int64("channelId", channelId))
 		response.WriteBizError(c, errors.ErrParam)
@@ -96,7 +100,11 @@ func (h *PayNotifyHandler) NotifyRefund(c *gin.Context) {
 	h.logger.Info("[NotifyRefund] 收到退款回调", zap.Int64("channelId", channelId))
 
 	// 1. 获取 PayClient
-	payClient := h.channelSvc.GetPayClient(channelId)
+	payClient, err := h.channelSvc.GetPayClient(c.Request.Context(), channelId)
+	if err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
 	if payClient == nil {
 		h.logger.Error("[NotifyRefund] 渠道编号找不到对应的支付客户端", zap.Int64("channelId", channelId))
 		response.WriteBizError(c, errors.ErrParam)
@@ -137,7 +145,11 @@ func (h *PayNotifyHandler) NotifyTransfer(c *gin.Context) {
 	h.logger.Info("[NotifyTransfer] 收到转账回调", zap.Int64("channelId", channelId))
 
 	// 1. 获取 PayClient
-	payClient := h.channelSvc.GetPayClient(channelId)
+	payClient, err := h.channelSvc.GetPayClient(c.Request.Context(), channelId)
+	if err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
 	if payClient == nil {
 		h.logger.Error("[NotifyTransfer] 渠道编号找不到对应的支付客户端", zap.Int64("channelId", channelId))
 		response.WriteBizError(c, errors.ErrParam)

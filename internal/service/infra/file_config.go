@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/infra"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/pkg/file"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 
 	"github.com/samber/lo"
@@ -40,7 +42,10 @@ func (s *FileConfigService) CreateFileConfig(ctx context.Context, req *infra.Fil
 	}
 
 	// 如果这是第一个配置，自动设为主配置
-	count, _ := s.q.InfraFileConfig.WithContext(ctx).Count()
+	count, err := s.q.InfraFileConfig.WithContext(ctx).Count()
+	if err != nil {
+		return 0, err
+	}
 	if count == 0 {
 		config.Master = true
 	}
@@ -71,11 +76,11 @@ func (s *FileConfigService) UpdateFileConfigMaster(ctx context.Context, id int64
 		c := tx.InfraFileConfig
 		// 1. 将所有配置设为非主配置
 		// Master 是 BitBool (field.Field)，使用 Eq
-		if _, err := c.WithContext(ctx).Where(c.Master.Eq(model.BitBool(true))).Update(c.Master, false); err != nil {
+		if _, err := c.WithContext(ctx).Where(c.Master.Eq(model.BitBool(true))).Update(c.Master, model.BitBool(false)); err != nil {
 			return err
 		}
 		// 2. 将当前配置设为主配置
-		result, err := c.WithContext(ctx).Where(c.ID.Eq(id)).Update(c.Master, true)
+		result, err := c.WithContext(ctx).Where(c.ID.Eq(id)).Update(c.Master, model.BitBool(true))
 		if err != nil {
 			return err
 		}
@@ -172,6 +177,10 @@ func (s *FileConfigService) convertResp(item *model.InfraFileConfig) *infra.File
 }
 
 func (s *FileConfigService) TestFileConfig(ctx context.Context, id int64) (string, error) {
+	tenantID, ok := pkgcontext.TenantID(ctx)
+	if !ok {
+		return "", errors.New("missing trusted tenant")
+	}
 	config, err := s.GetFileConfig(ctx, id)
 	if err != nil {
 		return "", errors.New("配置不存在")
@@ -187,7 +196,7 @@ func (s *FileConfigService) TestFileConfig(ctx context.Context, id int64) (strin
 	}
 
 	// 测试上传文件
-	path := "test.txt"
+	path := fmt.Sprintf("tenant/%d/test.txt", tenantID)
 	content := []byte("test")
 	url, err := client.Upload(content, path)
 	if err != nil {

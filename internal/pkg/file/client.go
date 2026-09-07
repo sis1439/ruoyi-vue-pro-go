@@ -39,16 +39,28 @@ func NewLocalFileClient(id int64, config json.RawMessage) (*LocalFileClient, err
 	if err := json.Unmarshal(config, &cfg); err != nil {
 		return nil, err
 	}
+	if !filepath.IsAbs(cfg.BasePath) {
+		return nil, errors.New("local file basePath must be an absolute directory")
+	}
 	return &LocalFileClient{Config: cfg, ConfigID: id}, nil
 }
 
 func (c *LocalFileClient) Upload(content []byte, path string) (string, error) {
-	fullPath := filepath.Join(c.Config.BasePath, path)
-	dir := filepath.Dir(fullPath)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+	if !filepath.IsLocal(path) {
+		return "", errors.New("invalid storage path")
+	}
+	if err := os.MkdirAll(c.Config.BasePath, 0750); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(fullPath, content, 0644); err != nil {
+	root, err := os.OpenRoot(c.Config.BasePath)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	if err := root.MkdirAll(filepath.Dir(path), 0750); err != nil {
+		return "", err
+	}
+	if err := root.WriteFile(path, content, 0640); err != nil {
 		return "", err
 	}
 	// 返回完整 URL
@@ -56,13 +68,21 @@ func (c *LocalFileClient) Upload(content []byte, path string) (string, error) {
 }
 
 func (c *LocalFileClient) Delete(path string) error {
-	fullPath := filepath.Join(c.Config.BasePath, path)
-	return os.Remove(fullPath)
+	root, err := os.OpenRoot(c.Config.BasePath)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return root.Remove(path)
 }
 
 func (c *LocalFileClient) GetContent(path string) ([]byte, error) {
-	fullPath := filepath.Join(c.Config.BasePath, path)
-	return os.ReadFile(fullPath)
+	root, err := os.OpenRoot(c.Config.BasePath)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return root.ReadFile(path)
 }
 
 func (c *LocalFileClient) GetURL(path string) string {

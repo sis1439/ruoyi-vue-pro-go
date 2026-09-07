@@ -1,7 +1,8 @@
 package system
 
 import (
-	"encoding/json"
+	"io"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	contract "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/system"
@@ -23,9 +24,11 @@ func NewCaptchaHandler(svc *system.CaptchaService) *CaptchaHandler {
 // 注意：验证码接口不使用项目标准响应格式，直接返回 aj-captcha 原始格式
 // 前端 aj-captcha 组件期望响应结构为 {repCode, repData}，而非 {code, msg, data}
 func (h *CaptchaHandler) Get(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
 	var req contract.CaptchaGetReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		// 即使绑定失败也继续，因为请求体可能为空
+	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
+		c.JSON(200, contract.CaptchaGetResp{RepCode: "6111", RepMsg: "参数错误"})
+		return
 	}
 
 	result, err := h.svc.Generate(c.Request.Context())
@@ -33,7 +36,7 @@ func (h *CaptchaHandler) Get(c *gin.Context) {
 		// 直接返回 aj-captcha 格式
 		c.JSON(200, contract.CaptchaGetResp{
 			RepCode: "6110",
-			RepMsg:  "获取验证码失败: " + err.Error(),
+			RepMsg:  "验证码服务不可用",
 			RepData: nil,
 		})
 		return
@@ -56,6 +59,7 @@ func (h *CaptchaHandler) Get(c *gin.Context) {
 // @Router /system/captcha/check [post]
 // 注意：验证码接口不使用项目标准响应格式，直接返回 aj-captcha 原始格式
 func (h *CaptchaHandler) Check(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
 	var req contract.CaptchaCheckReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(200, contract.CaptchaCheckResp{
@@ -65,22 +69,11 @@ func (h *CaptchaHandler) Check(c *gin.Context) {
 		return
 	}
 
-	// 解析坐标
-	var point contract.CaptchaPoint
-	if err := json.Unmarshal([]byte(req.PointJson), &point); err != nil {
-		c.JSON(200, contract.CaptchaCheckResp{
-			RepCode: "6111",
-			RepMsg:  "坐标格式错误",
-		})
-		return
-	}
-
-	// 校验（将浮点坐标转换为整数）
-	valid, err := h.svc.Verify(c.Request.Context(), req.Token, int(point.X), int(point.Y))
+	valid, err := h.svc.Check(c.Request.Context(), req.Token, req.PointJson)
 	if err != nil {
 		c.JSON(200, contract.CaptchaCheckResp{
 			RepCode: "6112",
-			RepMsg:  "校验失败: " + err.Error(),
+			RepMsg:  "验证码校验失败",
 		})
 		return
 	}

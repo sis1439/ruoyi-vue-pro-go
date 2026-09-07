@@ -61,7 +61,7 @@ func RegisterSystemRoutes(engine *gin.Engine,
 			}
 
 			// Dept Public Routes
-			deptPublicGroup := systemGroup.Group("/dept")
+			deptPublicGroup := systemGroup.Group("/dept", middleware.Auth())
 			{
 				deptPublicGroup.GET("/list", handlers.Dept.GetDeptList)
 				deptPublicGroup.GET("/list-all-simple", handlers.Dept.GetSimpleDeptList)
@@ -69,33 +69,33 @@ func RegisterSystemRoutes(engine *gin.Engine,
 			}
 
 			// Post Public Routes
-			postPublicGroup := systemGroup.Group("/post")
+			postPublicGroup := systemGroup.Group("/post", middleware.Auth())
 			{
 				postPublicGroup.GET("/simple-list", handlers.Post.GetSimplePostList)
 			}
 
 			// User Public Routes
-			userPublicGroup := systemGroup.Group("/user")
+			userPublicGroup := systemGroup.Group("/user", middleware.Auth())
 			{
 				userPublicGroup.GET("/list-all-simple", handlers.User.GetSimpleUserList)
 				userPublicGroup.GET("/simple-list", handlers.User.GetSimpleUserList)
 			}
 
 			// Role Public Routes
-			rolePublicGroup := systemGroup.Group("/role")
+			rolePublicGroup := systemGroup.Group("/role", middleware.Auth())
 			{
 				rolePublicGroup.GET("/list-all-simple", handlers.Role.GetSimpleRoleList)
 				rolePublicGroup.GET("/simple-list", handlers.Role.GetSimpleRoleList)
 			}
 
 			// Menu Public Routes
-			menuPublicGroup := systemGroup.Group("/menu")
+			menuPublicGroup := systemGroup.Group("/menu", middleware.Auth())
 			{
 				menuPublicGroup.GET("/simple-list", handlers.Menu.GetSimpleMenuList)
 			}
 
 			// SMS Public Routes
-			smsChannelPublicGroup := systemGroup.Group("/sms-channel")
+			smsChannelPublicGroup := systemGroup.Group("/sms-channel", middleware.Auth())
 			{
 				smsChannelPublicGroup.GET("/simple-list", handlers.SmsChannel.GetSimpleSmsChannelList)
 			}
@@ -103,6 +103,8 @@ func RegisterSystemRoutes(engine *gin.Engine,
 			// ====== Protected Routes (Auth Required) ======
 			// Apply Auth Middleware to all subsequent system routes
 			systemGroup.Use(middleware.Auth())
+
+			systemGroup.GET("/security/tenant-inspect", handlers.Auth.InspectTenant)
 
 			// Auth Protected Routes
 			authProtectedGroup := systemGroup.Group("/auth")

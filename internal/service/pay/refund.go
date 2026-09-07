@@ -65,7 +65,10 @@ func (s *PayRefundService) CreateRefund(ctx context.Context, reqDTO *pay.PayRefu
 	if err != nil {
 		return 0, err
 	}
-	payClient := s.channelSvc.GetPayClient(channel.ID)
+	payClient, err := s.channelSvc.GetPayClient(ctx, channel.ID)
+	if err != nil {
+		return 0, err
+	}
 	if payClient == nil {
 		return 0, errors.NewBizError(1006002000, "支付渠道找不到对应的支付客户端") // PAY_CHANNEL_CLIENT_NOT_FOUND
 	}
@@ -409,7 +412,10 @@ func (s *PayRefundService) SyncRefund(ctx context.Context) (int, error) {
 
 func (s *PayRefundService) syncRefund(ctx context.Context, refund *payModel.PayRefund) (bool, error) {
 	// 1.1 查询退款订单信息
-	payClient := s.channelSvc.GetPayClient(refund.ChannelID)
+	payClient, err := s.channelSvc.GetPayClient(ctx, refund.ChannelID)
+	if err != nil {
+		return false, err
+	}
 	if payClient == nil {
 		return false, fmt.Errorf("渠道编号(%d) 找不到对应的支付客户端", refund.ChannelID)
 	}
