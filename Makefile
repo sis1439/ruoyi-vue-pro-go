@@ -1,4 +1,4 @@
-.PHONY: all build run dev deps wire gen clean help setup
+.PHONY: all build build-linux run dev deps wire gen test verify clean help
 
 APP_NAME = server
 CMD_PATH = cmd/server/main.go
@@ -8,17 +8,17 @@ WIRE_GEN_PATH = cmd/server/wire_gen.go
 all: build
 
 # 编译项目
-build:
+build: gen
 	@echo "Building $(APP_NAME)..."
 	go build -o $(APP_NAME) $(CMD_PATH) $(WIRE_GEN_PATH)
 
 # 直接运行 (如果不使用 wire_gen.go，请确保 wire.go 不被编译排除，但通常 wire.go 有 build tag wireinject)
 
-build-linux:
+build-linux: gen
 	@echo "Building $(APP_NAME)..."
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux $(CMD_PATH) $(WIRE_GEN_PATH)
 
-run:
+run: gen
 	@echo "Running $(APP_NAME)..."
 	go run $(CMD_PATH) $(WIRE_GEN_PATH)
 
@@ -33,18 +33,27 @@ dev:
 # 下载依赖
 deps:
 	@echo "Downloading dependencies..."
-	go mod tidy
 	go mod download
+	go mod verify
 
 # 重新生成 wire 依赖注入
 wire:
 	@echo "Regenerating wire..."
-	cd cmd/server && wire
+	cd cmd/server && go run github.com/google/wire/cmd/wire@v0.7.0
 
 # 重新生成 GORM DAO 代码
 gen:
 	@echo "Generating DAO code..."
 	go run cmd/gen/generate.go
+
+test: gen
+	go test ./...
+
+verify: gen
+	go mod verify
+	go build ./...
+	go vet ./...
+	go test ./...
 
 # 清理构建产物
 clean:
@@ -61,4 +70,6 @@ help:
 	@echo "  make deps   - Clean and download dependencies"
 	@echo "  make wire   - Regenerate wire dependencies"
 	@echo "  make gen    - Generate GORM DAO code"
+	@echo "  make test   - Generate DAO and run tests"
+	@echo "  make verify - Verify dependencies, build, vet and test"
 	@echo "  make clean  - Clean build artifacts"

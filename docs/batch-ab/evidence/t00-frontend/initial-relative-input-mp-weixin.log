@@ -1,0 +1,15 @@
+
+> shopro@2026.08 build:mp-weixin
+> UNI_INPUT_DIR=. uni build -p mp-weixin
+
+Compiler version: 5.24（vue3）
+Compiling...
+
+​已开启 uni统计 2.0​
+
+x Build failed in 516ms
+[vite]: Rollup failed to resolve import "sheep/components/s-layout/s-layout.vue" from "/Users/macmini/Desktop/yudao-mall-uniapp/.work/uniapp-build/pages/commission/index.vue".
+This is most likely unintended because it can break your application at runtime.
+If you do want to externalize this module explicitly add it to
+`build.rollupOptions.external`
+Build failed with errors.

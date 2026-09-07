@@ -1,0 +1,27 @@
+$ node --max_old_space_size=8192 ./node_modules/vite/bin/vite.js build --mode prod
+NODE_ENV=production is not supported in the .env file. Only NODE_ENV=development is supported to create a development build of your project. If you need to set process.env.NODE_ENV, you can set it in the Vite config instead.
+vite v8.1.4 building client environment for prod...
+
+transforming...✓ 8853 modules transformed.
+✗ Build failed in 9.04s
+error during build:
+Build failed with 1 error:
+
+[UNLOADABLE_DEPENDENCY] Could not load src/views/oa/utils/constants
+    ╭─[ src/views/oa/attendance/list/OaAttendanceForm.vue?vue&type=script&setup=true&lang.ts:13:58 ]
+    │
+ 13 │ import { OA_ATTENDANCE_STATUS, OA_ATTENDANCE_TYPE } from "@/views/oa/utils/constants";
+    │                                                          ──────────────┬─────────────  
+    │                                                                        ╰─────────────── No such file or directory (os error 2)
+────╯
+
+    at aggregateBindingErrorsIntoJsError (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/rolldown@1.1.5/node_modules/rolldown/dist/shared/error-BHRSI0R7.mjs:48:18)
+    at unwrapBindingResult (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/rolldown@1.1.5/node_modules/rolldown/dist/shared/error-BHRSI0R7.mjs:18:128)
+    at #build (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/rolldown@1.1.5/node_modules/rolldown/dist/shared/rolldown-build-CtPvmZgJ.mjs:3276:34)
+    at async buildEnvironment (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/vite@8.1.4_@types+node@25.6.0_esbuild@0.27.3_jiti@2.6.1_sass@1.99.0_terser@5.46.2_yaml@2.8.4/node_modules/vite/dist/node/chunks/node.js:33011:66)
+    at async Object.build (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/vite@8.1.4_@types+node@25.6.0_esbuild@0.27.3_jiti@2.6.1_sass@1.99.0_terser@5.46.2_yaml@2.8.4/node_modules/vite/dist/node/chunks/node.js:33433:19)
+    at async Object.buildApp (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/vite@8.1.4_@types+node@25.6.0_esbuild@0.27.3_jiti@2.6.1_sass@1.99.0_terser@5.46.2_yaml@2.8.4/node_modules/vite/dist/node/chunks/node.js:33430:153)
+    at async CAC.<anonymous> (file:///Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build/node_modules/.pnpm/vite@8.1.4_@types+node@25.6.0_esbuild@0.27.3_jiti@2.6.1_sass@1.99.0_terser@5.46.2_yaml@2.8.4/node_modules/vite/dist/node/cli.js:776:3) {
+  errors: [Getter/Setter]
+}
+[ELIFECYCLE] Command failed with exit code 1.

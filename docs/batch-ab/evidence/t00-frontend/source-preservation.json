@@ -1,0 +1,16 @@
+{
+  "base_commit": "3c4bf3864415054a88fe616a414e098972329412",
+  "tracked_files_checked": 584,
+  "changed_tracked_files": [
+    ".gitignore",
+    "package.json",
+    "sheep/libs/mplive-manifest-plugin.js",
+    "vite.config.js"
+  ],
+  "all_other_tracked_files_byte_identical": true,
+  "pages_json_unchanged": true,
+  "manifest_json_unchanged": true,
+  "no_recursive_work_directory": true,
+  "original_checkout_head": "3c4bf3864415054a88fe616a414e098972329412",
+  "original_checkout_tracked_diff": ""
+}
