@@ -2,6 +2,10 @@ package product
 
 import (
 	"context"
+	"fmt"
+	modelProduct "github.com/wxlbd/ruoyi-mall-go/internal/model/product"
+	modelTrade "github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"time"
 
 	productDto "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
@@ -141,119 +145,87 @@ func (r *ProductStatisticsRepositoryImpl) CountByDateRange(ctx context.Context, 
 // StatisticsProductByDateRange 统计指定日期范围内的商品数据并入库
 // 对应 Java: ProductStatisticsMapper.selectStatisticsResultPageByTimeBetween
 func (r *ProductStatisticsRepositoryImpl) StatisticsProductByDateRange(ctx context.Context, date time.Time, beginTime, endTime time.Time) error {
-	db := r.db
-
-	// 分页统计，避免商品表数据较多时出现超时问题
-	const pageSize = 100
-	offset := 0
-
-	for {
-		// 使用原生 SQL 查询统计数据，对应 Java XML 映射
-		var records []struct {
-			SpuID                int64 `gorm:"column:spu_id"`
-			BrowseCount          int   `gorm:"column:browse_count"`
-			BrowseUserCount      int   `gorm:"column:browse_user_count"`
-			FavoriteCount        int   `gorm:"column:favorite_count"`
-			CartCount            int   `gorm:"column:cart_count"`
-			OrderCount           int   `gorm:"column:order_count"`
-			OrderPayCount        int   `gorm:"column:order_pay_count"`
-			OrderPayPrice        int64 `gorm:"column:order_pay_price"`
-			AfterSaleCount       int   `gorm:"column:after_sale_count"`
-			AfterSaleRefundPrice int64 `gorm:"column:after_sale_refund_price"`
-		}
-
-		sql := `
-			SELECT spu.id AS spu_id
-				-- 浏览量：一个用户可以有多次
-				, (SELECT COUNT(1) FROM product_browse_history 
-				   WHERE spu_id = spu.id AND create_time BETWEEN ? AND ?) AS browse_count
-				-- 访客量：按用户去重计数
-				, (SELECT COUNT(DISTINCT user_id) FROM product_browse_history 
-				   WHERE spu_id = spu.id AND create_time BETWEEN ? AND ?) AS browse_user_count
-				-- 收藏数量：按用户去重计数
-				, (SELECT COUNT(DISTINCT user_id) FROM product_favorite 
-				   WHERE spu_id = spu.id AND create_time BETWEEN ? AND ?) AS favorite_count
-				-- 加购数量：按用户去重计数
-				, (SELECT COUNT(DISTINCT user_id) FROM trade_cart 
-				   WHERE spu_id = spu.id AND create_time BETWEEN ? AND ?) AS cart_count
-				-- 下单件数
-				, (SELECT IFNULL(SUM(count), 0) FROM trade_order_item 
-				   WHERE spu_id = spu.id AND create_time BETWEEN ? AND ?) AS order_count
-				-- 支付件数
-				, (SELECT IFNULL(SUM(item.count), 0) FROM trade_order_item item 
-				   JOIN trade_order o ON item.order_id = o.id 
-				   WHERE spu_id = spu.id AND o.pay_status = TRUE 
-				   AND item.create_time BETWEEN ? AND ?) AS order_pay_count
-				-- 支付金额
-				, (SELECT IFNULL(SUM(item.pay_price), 0) FROM trade_order_item item 
-				   JOIN trade_order o ON item.order_id = o.id 
-				   WHERE spu_id = spu.id AND o.pay_status = TRUE 
-				   AND item.create_time BETWEEN ? AND ?) AS order_pay_price
-				-- 退款件数
-				, (SELECT IFNULL(SUM(count), 0) FROM trade_after_sale 
-				   WHERE spu_id = spu.id AND refund_time IS NOT NULL 
-				   AND create_time BETWEEN ? AND ?) AS after_sale_count
-				-- 退款金额
-				, (SELECT IFNULL(SUM(refund_price), 0) FROM trade_after_sale 
-				   WHERE spu_id = spu.id AND refund_time IS NOT NULL 
-				   AND create_time BETWEEN ? AND ?) AS after_sale_refund_price
-			FROM product_spu spu
-			WHERE spu.deleted = 0
-			ORDER BY spu.id
-			LIMIT ? OFFSET ?
-		`
-
-		err := db.WithContext(ctx).Raw(sql,
-			beginTime, endTime, // browse_count
-			beginTime, endTime, // browse_user_count
-			beginTime, endTime, // favorite_count
-			beginTime, endTime, // cart_count
-			beginTime, endTime, // order_count
-			beginTime, endTime, // order_pay_count
-			beginTime, endTime, // order_pay_price
-			beginTime, endTime, // after_sale_count
-			beginTime, endTime, // after_sale_refund_price
-			pageSize, offset,
-		).Scan(&records).Error
-		if err != nil {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return fmt.Errorf("trusted tenant required for product statistics")
+	}
+	day := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Model queries preserve both the tenant guard and BitBool soft deletion.
+		scoped := func(m any) *gorm.DB { return tx.Model(m).Where("tenant_id = ?", tenant) }
+		// ponytail: paid IDs are held per tenant; stream them if tenant history makes this memory material. Bind batches stay below PostgreSQL limits.
+		var paidOrderIDs []int64
+		if err := scoped(&modelTrade.TradeOrder{}).Where("pay_status = ?", 1).Pluck("id", &paidOrderIDs).Error; err != nil {
 			return err
 		}
-
-		// 如果没有数据，退出循环
-		if len(records) == 0 {
-			break
+		// A retry replaces this tenant/day atomically; the unique live key rejects concurrent duplicates.
+		if err := scoped(&modelProduct.ProductStatistics{}).Where("time = ?", day).Delete(&modelProduct.ProductStatistics{}).Error; err != nil {
+			return err
 		}
-
-		// 计算访客支付转化率并批量插入
-		dateOnly := date.Format("2006-01-02")
-		for _, record := range records {
-			// 计算访客支付转化率（百分比）
-			browseConvertPercent := 0
-			if record.BrowseUserCount > 0 {
-				browseConvertPercent = 100 * record.OrderPayCount / record.BrowseUserCount
-			}
-
-			// 插入统计记录
-			insertSQL := `
-				INSERT INTO product_statistics 
-					(spu_id, time, browse_count, browse_user_count, favorite_count, cart_count, 
-					 order_count, order_pay_count, order_pay_price, after_sale_count, 
-					 after_sale_refund_price, browse_convert_percent, create_time, update_time, deleted, tenant_id)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 0, 0)
-			`
-			err := db.WithContext(ctx).Exec(insertSQL,
-				record.SpuID, dateOnly,
-				record.BrowseCount, record.BrowseUserCount, record.FavoriteCount, record.CartCount,
-				record.OrderCount, record.OrderPayCount, record.OrderPayPrice,
-				record.AfterSaleCount, record.AfterSaleRefundPrice, browseConvertPercent,
-			).Error
-			if err != nil {
+		var cursor int64
+		for {
+			var spus []modelProduct.ProductSpu
+			if err := scoped(&modelProduct.ProductSpu{}).Where("id > ?", cursor).Order("id").Limit(100).Find(&spus).Error; err != nil {
 				return err
 			}
+			if len(spus) == 0 {
+				return nil
+			}
+			for _, spu := range spus {
+				stat := modelProduct.ProductStatistics{SpuID: spu.ID, Time: day}
+				stat.TenantID = tenant
+				within := func(m any) *gorm.DB {
+					return scoped(m).Where("spu_id = ? AND create_time BETWEEN ? AND ?", spu.ID, beginTime, endTime)
+				}
+				var count int64
+				if err := within(&modelProduct.ProductBrowseHistory{}).Count(&count).Error; err != nil {
+					return err
+				}
+				stat.BrowseCount = int(count)
+				if err := within(&modelProduct.ProductBrowseHistory{}).Distinct("user_id").Count(&count).Error; err != nil {
+					return err
+				}
+				stat.BrowseUserCount = int(count)
+				if err := within(&modelProduct.ProductFavorite{}).Distinct("user_id").Count(&count).Error; err != nil {
+					return err
+				}
+				stat.FavoriteCount = int(count)
+				if err := within(&modelTrade.Cart{}).Distinct("user_id").Count(&count).Error; err != nil {
+					return err
+				}
+				stat.CartCount = int(count)
+				var totals struct {
+					Count int64
+					Price int64
+				}
+				if err := within(&modelTrade.TradeOrderItem{}).Select("COALESCE(SUM(count),0) AS count").Scan(&totals).Error; err != nil {
+					return err
+				}
+				stat.OrderCount = int(totals.Count)
+				for start := 0; start < len(paidOrderIDs); start += 1000 {
+					end := start + 1000
+					if end > len(paidOrderIDs) {
+						end = len(paidOrderIDs)
+					}
+					if err := within(&modelTrade.TradeOrderItem{}).Where("order_id IN ?", paidOrderIDs[start:end]).Select("COALESCE(SUM(count),0) AS count, COALESCE(SUM(pay_price),0) AS price").Scan(&totals).Error; err != nil {
+						return err
+					}
+					stat.OrderPayCount += int(totals.Count)
+					stat.OrderPayPrice += int(totals.Price)
+				}
+				if err := within(&modelTrade.AfterSale{}).Where("refund_time IS NOT NULL").Select("COALESCE(SUM(count),0) AS count, COALESCE(SUM(refund_price),0) AS price").Scan(&totals).Error; err != nil {
+					return err
+				}
+				stat.AfterSaleCount = int(totals.Count)
+				stat.AfterSaleRefundPrice = int(totals.Price)
+				if stat.BrowseUserCount > 0 {
+					stat.BrowseConvertPercent = 100 * stat.OrderPayCount / stat.BrowseUserCount
+				}
+				if err := tx.Create(&stat).Error; err != nil {
+					return err
+				}
+			}
+			cursor = spus[len(spus)-1].ID
 		}
-
-		offset += pageSize
-	}
-
-	return nil
+	})
 }

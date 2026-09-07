@@ -22,11 +22,8 @@ func NewMemberAddressService(q *query.Query) *MemberAddressService {
 
 // CreateAddress 创建收件地址
 func (s *MemberAddressService) CreateAddress(ctx context.Context, userId int64, req *member2.AppAddressCreateReq) (int64, error) {
-	// 如果是默认地址，先将其他地址设为非默认
-	if req.DefaultStatus {
-		if err := s.updateDefaultStatus(ctx, userId, 0); err != nil {
-			return 0, err
-		}
+	if req.DefaultStatus == nil {
+		return 0, errors.ErrParam
 	}
 
 	address := &member.MemberAddress{
@@ -35,14 +32,24 @@ func (s *MemberAddressService) CreateAddress(ctx context.Context, userId int64, 
 		Mobile:        req.Mobile,
 		AreaID:        req.AreaID,
 		DetailAddress: req.DetailAddress,
-		DefaultStatus: model.NewBitBool(req.DefaultStatus),
+		DefaultStatus: model.NewBitBool(*req.DefaultStatus),
 	}
-	err := s.q.MemberAddress.WithContext(ctx).Create(address)
+	err := s.q.Transaction(func(tx *query.Query) error {
+		if *req.DefaultStatus {
+			if err := s.updateDefaultStatus(ctx, tx, userId, 0); err != nil {
+				return err
+			}
+		}
+		return tx.MemberAddress.WithContext(ctx).Create(address)
+	})
 	return address.ID, err
 }
 
 // UpdateAddress 更新收件地址
 func (s *MemberAddressService) UpdateAddress(ctx context.Context, userId int64, req *member2.AppAddressUpdateReq) error {
+	if req.DefaultStatus == nil {
+		return errors.ErrParam
+	}
 	// 校验存在
 	exists, err := s.exists(ctx, userId, req.ID)
 	if err != nil {
@@ -52,22 +59,25 @@ func (s *MemberAddressService) UpdateAddress(ctx context.Context, userId int64, 
 		return errors.NewBizError(1004003005, "收件地址不存在") // ADDRESS_NOT_EXISTS
 	}
 
-	// 如果是默认地址，先将其他地址设为非默认
-	if req.DefaultStatus {
-		if err := s.updateDefaultStatus(ctx, userId, req.ID); err != nil {
+	return s.q.Transaction(func(tx *query.Query) error {
+		if *req.DefaultStatus {
+			if err := s.updateDefaultStatus(ctx, tx, userId, req.ID); err != nil {
+				return err
+			}
+		}
+		u := tx.MemberAddress
+		result, err := u.WithContext(ctx).Where(u.ID.Eq(req.ID), u.UserID.Eq(userId)).Updates(map[string]interface{}{
+			"name": req.Name, "mobile": req.Mobile, "area_id": req.AreaID,
+			"detail_address": req.DetailAddress, "default_status": model.NewBitBool(*req.DefaultStatus),
+		})
+		if err != nil {
 			return err
 		}
-	}
-
-	u := s.q.MemberAddress
-	_, err = u.WithContext(ctx).Where(u.ID.Eq(req.ID)).Updates(&member.MemberAddress{
-		Name:          req.Name,
-		Mobile:        req.Mobile,
-		AreaID:        req.AreaID,
-		DetailAddress: req.DetailAddress,
-		DefaultStatus: model.NewBitBool(req.DefaultStatus),
+		if result.RowsAffected != 1 {
+			return errors.NewBizError(1004003005, "收件地址不存在")
+		}
+		return nil
 	})
-	return err
 }
 
 // DeleteAddress 删除收件地址
@@ -128,8 +138,8 @@ func (s *MemberAddressService) exists(ctx context.Context, userId int64, id int6
 	return count > 0, err
 }
 
-func (s *MemberAddressService) updateDefaultStatus(ctx context.Context, userId int64, excludeId int64) error {
-	u := s.q.MemberAddress
+func (s *MemberAddressService) updateDefaultStatus(ctx context.Context, tx *query.Query, userId int64, excludeId int64) error {
+	u := tx.MemberAddress
 	// Set all others to false
 	q := u.WithContext(ctx).Where(u.UserID.Eq(userId), u.DefaultStatus.Eq(model.NewBitBool(true)))
 	if excludeId > 0 {

@@ -69,7 +69,7 @@ func (s *ProductBrowseHistoryService) HideUserBrowseHistory(ctx context.Context,
 	// "void hideUserBrowseHistory(Long userId, Collection<Long> spuId);"
 	// productBrowseHistoryMapper.updateUserDeleted(userId, spuIds, true);
 
-	_, err := q.Update(h.UserDeleted, true)
+	_, err := q.Update(h.UserDeleted, model.BitBool(true))
 	return err
 }
 

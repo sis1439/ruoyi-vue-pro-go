@@ -18,7 +18,7 @@ type SystemOAuth2Client struct {
 	Authorities                 string `gorm:"column:authorities;comment:权限" json:"authorities"`                                // JSON array
 	ResourceIDs                 string `gorm:"column:resource_ids;comment:资源" json:"resourceIds"`                               // JSON array
 	AdditionalInformation       string `gorm:"column:additional_information;comment:附加信息" json:"additionalInformation"`         // JSON string
-	BaseDO
+	TenantBaseDO
 }
 
 func (SystemOAuth2Client) TableName() string {

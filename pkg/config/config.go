@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -10,14 +11,16 @@ import (
 var C = new(Config)
 
 type Config struct {
-	App   AppConfig   `mapstructure:"app"`
-	HTTP  HTTPConfig  `mapstructure:"http"`
-	Log   LogConfig   `mapstructure:"log"`
-	MySQL MySQLConfig `mapstructure:"mysql"`
-	Redis RedisConfig `mapstructure:"redis"`
-	Trade TradeConfig `mapstructure:"trade"`
-	Pay   PayConfig   `mapstructure:"pay"`
-	IoT   IoTConfig   `mapstructure:"iot"`
+	App      AppConfig      `mapstructure:"app"`
+	HTTP     HTTPConfig     `mapstructure:"http"`
+	Log      LogConfig      `mapstructure:"log"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Security SecurityConfig `mapstructure:"security"`
+	MySQL    MySQLConfig    `mapstructure:"mysql"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Trade    TradeConfig    `mapstructure:"trade"`
+	Pay      PayConfig      `mapstructure:"pay"`
+	IoT      IoTConfig      `mapstructure:"iot"`
 }
 
 type IoTConfig struct {
@@ -75,6 +78,31 @@ type LogConfig struct {
 	MaxBackups int    `mapstructure:"max_backups"`
 }
 
+type SecurityConfig struct {
+	JWTSecret string `mapstructure:"jwt_secret"`
+}
+
+type DatabaseConfig struct {
+	Driver      string `mapstructure:"driver"`
+	DSN         string `mapstructure:"dsn"`
+	MaxIdle     int    `mapstructure:"max_idle"`
+	MaxOpen     int    `mapstructure:"max_open"`
+	MaxLifetime int    `mapstructure:"max_lifetime"`
+}
+
+func (c SecurityConfig) Validate() error {
+	secret := strings.TrimSpace(c.JWTSecret)
+	lower := strings.ToLower(secret)
+	distinct := map[rune]bool{}
+	for _, r := range secret {
+		distinct[r] = true
+	}
+	if len(secret) < 32 || len(distinct) < 8 || strings.Contains(lower, "change") || strings.Contains(lower, "placeholder") || strings.Contains(lower, "ruoyi-mall-secret") || strings.Contains(lower, "your-secret") {
+		return fmt.Errorf("security.jwt_secret must be an independent secret of at least 32 bytes, supplied through RUOYI_JWT_SECRET")
+	}
+	return nil
+}
+
 type MySQLConfig struct {
 	DSN         string `mapstructure:"dsn"`
 	MaxIdle     int    `mapstructure:"max_idle"`
@@ -130,5 +158,14 @@ func Load() error {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	return nil
+	if value, ok := os.LookupEnv("RUOYI_JWT_SECRET"); ok {
+		C.Security.JWTSecret = value
+	}
+	if value, ok := os.LookupEnv("RUOYI_DATABASE_DSN"); ok {
+		C.Database.DSN = value
+	}
+	if value, ok := os.LookupEnv("RUOYI_DATABASE_DRIVER"); ok {
+		C.Database.Driver = value
+	}
+	return C.Security.Validate()
 }

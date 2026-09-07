@@ -1,0 +1,21 @@
+-- Page components verified against pinned admin src/views; permissions remain router-sourced.
+BEGIN;
+INSERT INTO system_menu(id,name,type,sort,parent_id,path,component,component_name,status) VALUES(10,'Products',2,10,1,'product','mall/product/spu/index','ProductSpu',0);
+UPDATE system_menu SET parent_id=10 WHERE permission LIKE 'product:spu:%';
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id) VALUES(1,10,1);
+INSERT INTO system_menu(id,name,type,sort,parent_id,path,component,component_name,status) VALUES(11,'Members',2,11,1,'member','member/user/index','MemberUser',0);
+UPDATE system_menu SET parent_id=11 WHERE permission LIKE 'member:user:%';
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id) VALUES(1,11,1);
+INSERT INTO system_menu(id,name,type,sort,parent_id,path,component,component_name,status) VALUES(12,'Orders',2,12,1,'order','mall/trade/order/index','TradeOrder',0);
+UPDATE system_menu SET parent_id=12 WHERE permission LIKE 'trade:order:%';
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id) VALUES(1,12,1);
+INSERT INTO system_menu(id,name,type,sort,parent_id,path,component,component_name,status) VALUES(13,'Files',2,13,1,'file','infra/file/index','InfraFile',0);
+UPDATE system_menu SET parent_id=13 WHERE permission LIKE 'infra:file:%';
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id) VALUES(1,13,1);
+INSERT INTO system_menu(id,name,type,sort,parent_id,path,component,component_name,status) VALUES(14,'Trade configuration',2,14,1,'trade-config','mall/trade/config/index','TradeConfig',0);
+UPDATE system_menu SET parent_id=14 WHERE permission LIKE 'trade:config:%';
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id) VALUES(1,14,1);
+INSERT INTO system_menu(id,name,type,sort,parent_id,path,component,component_name,status) VALUES(15,'Member configuration',2,15,1,'member-config','member/config/index','MemberConfig',0);
+UPDATE system_menu SET parent_id=15 WHERE permission LIKE 'member:config:%';
+INSERT INTO system_role_menu(role_id,menu_id,tenant_id) VALUES(1,15,1);
+COMMIT;

@@ -8,7 +8,7 @@ type AppAddressCreateReq struct {
 	Mobile        string `json:"mobile" binding:"required,len=11"`
 	AreaID        int64  `json:"areaId" binding:"required"`
 	DetailAddress string `json:"detailAddress" binding:"required"`
-	DefaultStatus bool   `json:"defaultStatus" binding:"required"`
+	DefaultStatus *bool  `json:"defaultStatus" binding:"required"`
 }
 
 // AppAddressUpdateReq 更新收件地址请求
@@ -18,7 +18,7 @@ type AppAddressUpdateReq struct {
 	Mobile        string `json:"mobile" binding:"required,len=11"`
 	AreaID        int64  `json:"areaId" binding:"required"`
 	DetailAddress string `json:"detailAddress" binding:"required"`
-	DefaultStatus bool   `json:"defaultStatus" binding:"required"`
+	DefaultStatus *bool  `json:"defaultStatus" binding:"required"`
 }
 
 // AppAddressResp 收件地址响应

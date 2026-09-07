@@ -1,0 +1,34 @@
+# PostgreSQL initialization, upgrade and recovery
+
+Run commands from the Go backend root. Prefix shell commands with rtk. The local test instance is PostgreSQL 16.10 at host=127.0.0.1 port=55439 user=macmini dbname=ruoyi_ab sslmode=disable; data is in /private/tmp/ruoyi-ab-pg/data and server log in /private/tmp/ruoyi-ab-pg/server.log. It is a disposable loopback-only development instance using local trust authentication, never a production configuration. Do not drop its public schema while other agents or the smoke server are using it.
+
+## Initialize an empty database
+
+1. Supply `GOCACHE=/private/tmp/ruoyi-ab-go-build`, `GOPATH=/private/tmp/ruoyi-ab-gopath`, and `RUOYI_DATABASE_DSN` through your process environment. For deployment use a dedicated migration role and TLS-configured DSN from the deployment environment.
+2. Verify immutable inputs: `rtk proxy shasum -a 256 -c docs/batch-ab/migrations.sha256`.
+3. Apply migrations: `rtk proxy go run ./cmd/migrate`. Migration6 is a forward permission-seed addition for the trade RBAC guards; authorization now checks live HasPermission database grants, so new grant rows take effect without an application policy reload; startup Casbin validation remains in place. The pinned executor is golang-migrate v4.18.3, using its PostgreSQL advisory lock and schema_migrations version/dirty state. The SQL is embedded in the binary; no external migrate installation is required. Run it again: ErrNoChange is reported as success and must not change data.
+4. Supply `RUOYI_BOOTSTRAP_USERNAME`, a non-default `RUOYI_BOOTSTRAP_PASSWORD` of 16..72 bytes, and optional `RUOYI_BOOTSTRAP_WEBSITE` (for example localhost or your owned bare hostname, no scheme/path/port). Run `rtk proxy go run ./cmd/bootstrap`. A trusted hostname mapping is needed for host-based login; when omitted, bind it through the authorized tenant provisioning workflow before login. Keep passwords out of shell history and logs by injecting them from your secret manager or an interactive environment setup. Bootstrap never resets an existing account. Only when explicitly provisioning a platform read operator offline, also set RUOYI_BOOTSTRAP_PLATFORM_ADMIN=true for the new user. This adds reserved platform_admin; normal bootstrap never grants it, and no menu/role seed grants it. Do not use this flag for ordinary tenant administrators.
+5. Copy config/config.example.yaml to ignored config/config.local.yaml. Supply a fresh independent RUOYI_JWT_SECRET of at least 32 bytes (at least eight distinct characters); supply RUOYI_DATABASE_DSN and optionally RUOYI_DATABASE_DRIVER=postgres. GO_ENV defaults to local. Set the Redis instance/database appropriate to this environment. Start via the parent build/run instructions. Database startup does not run migrations.
+6. Configure an authorized tenant-local file backend and validate trusted host login, permissions and the six page APIs. Before real payment, configure and validate merchant/channel data and callback URLs, then deliberately enable the mall pay app. No certificate/key belongs in a SQL seed or tracked config.
+
+The shared helper is internal/testutil.PostgreSQL(t testing.TB) *gorm.DB; it requires TEST_POSTGRES_DSN, creates a unique schema and applies all migrations. search_path is part of each pool's DSN; test cleanup drops only its own schema. PostgreSQLAt(t,version) supports historical upgrade tests. The helper does not register application plugins automatically; tests explicitly install TenantPlugin when they exercise it. Without TEST_POSTGRES_DSN integration tests skip, and that skip is NOT acceptance.
+
+## Upgrade rules
+
+Never edit a migration after it is deployed. Add the next numbered `.up.sql`, review its source-backed delta and update the tracked checksum list with the new file. There are deliberately no destructive down scripts. golang-migrate versions migrations but does not itself enforce historical content checksums; the tracked SHA-256 file is the review/CI integrity check, not a claimed server-side tamper ledger.
+
+Schema generation is for comparison: run `rtk proxy python3 cmd/schema/registry.py`, then `rtk proxy go run ./cmd/schema -out /private/tmp/ruoyi-schema-review`. Compare the scratch SQL/manifest with the deployed baseline and write a forward migration. Never copy generated baseline SQL over an applied production migration. Review new source models against the registry and run all model coverage tests. DAO generation remains the parent Makefile workflow and is separate from schema generation.
+
+Initial development rehearsals corrected int(11), duplicate embedded update_time and bool default conversion before migrations1..5 were frozen. Only disposable test schemas/databases were rebuilt; this is not a model for modifying deployed migration history.
+
+If an upgrade fails, inspect the logged SQLSTATE and schema_migrations dirty flag. Migration SQL uses BEGIN/COMMIT; do not automatically force a version or clear dirty state. Inspect whether the transaction rolled back and reconcile the actual schema. Restore to a new database from a verified backup or issue a reviewed forward repair. Never use force to hide an unknown partial deployment.
+
+## Backup/restore and repeatable checks
+
+Before destructive schema changes or production upgrades, take a database-consistent custom-format pg_dump using a PostgreSQL client compatible with the server, retain it under the deployment's access/retention policy, and verify a restore to a different empty database with pg_restore --exit-on-error --no-owner --no-acl. Compare application rows, migration version, sequence state and task data before switching traffic. Database restore does not restore Redis token/cache state or external channel side effects.
+
+Reproduce the isolated automated rehearsal: `rtk proxy python3 scripts/postgres_restore_check.py`, with TEST_POSTGRES_DSN in libpq keyword form, PG_BIN=/opt/homebrew/opt/postgresql@16/bin, and the shared Go cache environment. It creates two randomly named databases, migrates and bootstraps a synthetic user, inserts a large integer-money fixture, dumps/restores, compares every table's row count and ordered full-row digest plus all sequence last values, reapplies migrations and confirms unchanged data, then drops only those two databases. The supplied database is untouched. Custom dump files are temporary and contain only synthetic data.
+
+Focused check: `rtk proxy go test ./migrations ./internal/repo/product ./cmd/bootstrap ./pkg/config ./pkg/types -count=1 -v`, with TEST_POSTGRES_DSN. The parent runs broader build, real Redis, authentication, scheduler, transaction and HTTP suites. Recorded evidence paths and actual results are in database-verification.md.
+
+When all users of the local instance have finished, stop it with `rtk proxy /opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /private/tmp/ruoyi-ab-pg/data stop`. Leave it running while the parent smoke/integration work is active.

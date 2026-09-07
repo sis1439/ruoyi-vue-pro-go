@@ -181,7 +181,7 @@ func (s *diyTemplateService) UseDiyTemplate(ctx context.Context, id int64) error
 	// 开启事务
 	return s.q.Transaction(func(tx *query.Query) error {
 		// 1. 将所有已使用的设置为未使用
-		err := tx.PromotionDiyTemplate.WithContext(ctx).UnderlyingDB().Model(&promotion.PromotionDiyTemplate{}).Where("used = ?", true).Updates(map[string]interface{}{"used": false}).Error
+		err := tx.PromotionDiyTemplate.WithContext(ctx).UnderlyingDB().Model(&promotion.PromotionDiyTemplate{}).Where("used = ?", types.BitBool(true)).Updates(map[string]interface{}{"used": types.BitBool(false)}).Error
 		if err != nil {
 			return err
 		}
@@ -191,7 +191,7 @@ func (s *diyTemplateService) UseDiyTemplate(ctx context.Context, id int64) error
 		_, err = tx.PromotionDiyTemplate.WithContext(ctx).
 			Where(tx.PromotionDiyTemplate.ID.Eq(id)).
 			Updates(map[string]interface{}{
-				"used":      true,
+				"used":      types.BitBool(true),
 				"used_time": &now,
 			})
 		return err
@@ -200,7 +200,7 @@ func (s *diyTemplateService) UseDiyTemplate(ctx context.Context, id int64) error
 
 func (s *diyTemplateService) GetUsedDiyTemplate(ctx context.Context) (*promotion.PromotionDiyTemplate, error) {
 	template := &promotion.PromotionDiyTemplate{}
-	err := s.q.PromotionDiyTemplate.WithContext(ctx).UnderlyingDB().Where("used = ?", true).First(template).Error
+	err := s.q.PromotionDiyTemplate.WithContext(ctx).UnderlyingDB().Where("used = ?", types.BitBool(true)).First(template).Error
 	if err != nil {
 		if stdErrors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil // Return nil if not found

@@ -13,9 +13,9 @@ type SystemMenu struct {
 	Component     string  `gorm:"column:component;default:''" json:"component"`
 	ComponentName string  `gorm:"column:component_name;default:''" json:"componentName"`
 	Status        int32   `gorm:"column:status;not null;default:0" json:"status"` // 0:开启, 1:禁用
-	Visible       BitBool `gorm:"column:visible;not null;default:1" json:"visible"`
-	KeepAlive     BitBool `gorm:"column:keep_alive;not null;default:1" json:"keepAlive"`
-	AlwaysShow    BitBool `gorm:"column:always_show;not null;default:1" json:"alwaysShow"`
+	Visible       BitBool `gorm:"column:visible;not null;default:(1)" json:"visible"`
+	KeepAlive     BitBool `gorm:"column:keep_alive;not null;default:(1)" json:"keepAlive"`
+	AlwaysShow    BitBool `gorm:"column:always_show;not null;default:(1)" json:"alwaysShow"`
 	BaseDO
 }
 
