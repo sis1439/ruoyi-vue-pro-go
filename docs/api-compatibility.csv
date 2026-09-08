@@ -1,0 +1,16 @@
+接口,方法,路径,前端调用处(固定快照),状态,差异与处置,关联测试/证据
+提交支付订单,POST,/app-api/pay/order/submit,sheep/api/pay/order.js:17,已对齐,"channelExtras 原先未透传至渠道层(F-05-02)；JSAPI displayContent 原为裸 prepayId(F-05-03)。均已在 Go 侧修复，前端未改",TestJsapiRequiresOpenid / TestCreatorKeepsChannelCode
+获得支付订单,GET,/app-api/pay/order/get?id&sync&no,sheep/api/pay/order.js:5,部分对齐,"sync=true 已实现并新增频率闸门(3s/单)；no 参数服务端未处理；无归属校验(与 Java 基线一致的已知偏差)",人工代码复核 — 未做集成测试
+获得订单详情,GET,/app-api/trade/order/get-detail?id&sync,sheep/api/trade/order.js:83,已对齐,"sync=true 原未实现(F-07-03)，已补：归属校验 + 3s 频率闸门 + 走统一可信入口更新",人工代码复核 — 未做集成测试
+更新订单已支付,POST,/app-api/trade/order/update-paid,支付中心内部调用,已对齐,"请求体原为 {}(F-06-01)；merchantOrderId 语义冲突(F-06-03)；端点无认证(F-06-07)。均已修复",TestBuildNotifyBody
+售后退款回调,POST,/admin-api/trade/after-sale/update-refunded,支付中心内部调用,已对齐,"merchantOrderId 语义冲突导致售后退款无法发起(F-06-03)；取消退款标识前缀不匹配(F-06-04)；端点无认证(F-06-07)。均已修复",TestBuildNotifyBody
+渠道支付回调,POST,/admin-api/pay/notify/order/:channelId,微信服务器回调,已对齐,"客户端缓存重启后为空导致回调静默丢弃(F-05-05)；缺 mchid/appid/金额校验(F-06-08)。均已修复",人工代码复核 — 未做真实渠道联调
+渠道退款回调,POST,/admin-api/pay/notify/refund/:channelId,微信服务器回调,已对齐,同上的客户端重建问题已修复；退款状态机本就使用条件转换,人工代码复核 — 未做真实渠道联调
+取消订单,DELETE,/app-api/trade/order/cancel,sheep/pages/order/detail.vue:305,已对齐,"更新未检查影响行数(F-07-02)，已加条件状态转换 + RowsAffected 检查",人工代码复核 — 并发用例需真实数据库
+创建订单,POST,/app-api/trade/order/create,sheep/api/trade/order.js,未验收,批次 B(T04) 范围：库存/优惠券/积分一致性未验证,未覆盖
+订单结算,GET,/app-api/trade/order/settlement,sheep/api/trade/order.js,未验收,批次 A(T01 全量盘点) 范围,未覆盖
+登录/刷新/登出,-,/app-api/member/auth/*,sheep/api/member,未验收,批次 B(T09) 范围；本次仅修了 JWT 密钥硬编码与 alg 未固定,TestValidateRejectsWeakProdConfig
+商品/SKU/地址/购物车,-,多个,sheep/api/*,未验收,批次 A(T01) 范围,未覆盖
+文件上传,-,/app-api/infra/file/upload,sheep/api,未验收,批次 D(T11) 声明范围但需真实对象存储凭证,外部阻塞
+微信 H5 支付(wx_wap),POST,/app-api/pay/order/submit,sheep/platform/pay.js:149,未启用,"前端 wechatWapPay 读的是 data.pay_data.h5_url，与服务端 displayContent 契约不符；前端自身标注 TODO 待接入。服务端路径已修正但该渠道首期不启用",见 decisions.md ADR-006
+微信付款码(wx_bar),-,-,前端未调用,不适用,注册表保留但 payMethodOf 明确返回 false，下单显式报错，不静默降级,TestEveryRegisteredChannelIsDispatchable

@@ -1,0 +1,8 @@
+
+2026/09/07 21:47:27 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/cart.go:164 [35;1msql: Scan error on column index 0, name "sum": converting NULL to int is unsupported
+[0m[33m[1.927ms] [34;1m[rows:1][0m SELECT SUM("trade_cart"."count") FROM "trade_cart" WHERE "trade_cart"."user_id" = 17 AND "trade_cart"."tenant_id" = 1 AND "trade_cart"."deleted" = 0
+--- FAIL: TestPostgresCartEmptyAndIsolatedCount (0.17s)
+    cart_postgres_test.go:21: empty cart: count=0 err=sql: Scan error on column index 0, name "sum": converting NULL to int is unsupported
+FAIL
+FAIL	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/trade	2.860s
+FAIL

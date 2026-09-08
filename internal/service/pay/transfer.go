@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 
 	reqPay "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	respPay "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
@@ -176,7 +178,10 @@ func (s *PayTransferService) CreateTransfer(ctx context.Context, req *reqPay.Pay
 		return nil, err
 	}
 
-	payClient := s.channelSvc.GetPayClient(channel.ID)
+	payClient, err := s.channelSvc.GetPayClient(ctx, channel.ID)
+	if err != nil {
+		return nil, err
+	}
 	if payClient == nil {
 		s.logger.Error("[createTransfer][渠道编号找不到对应的支付客户端]", zap.Int64("channelId", channel.ID))
 		return nil, errors.New("pay client not found")
@@ -295,7 +300,10 @@ func (s *PayTransferService) NotifyTransfer(ctx context.Context, channelId int64
 		return err
 	}
 	// 通知转账结果给对应的业务
-	return s.notifyTransferInternal(ctx, channel, notify)
+	if notify == nil {
+		return errors.New("转账通知缺失")
+	}
+	return repo.InTransaction(ctx, s.notifySvc.q, func(ctx context.Context, _ *query.Query) error { return s.notifyTransferInternal(ctx, channel, notify) })
 }
 
 // notifyTransferInternal 内部转账通知处理
@@ -484,7 +492,10 @@ func (s *PayTransferService) syncTransfer(ctx context.Context, transfer *modelPa
 	}()
 
 	// 1. 查询转账订单信息
-	payClient := s.channelSvc.GetPayClient(transfer.ChannelID)
+	payClient, err := s.channelSvc.GetPayClient(ctx, transfer.ChannelID)
+	if err != nil {
+		return false
+	}
 	if payClient == nil {
 		s.logger.Error("[syncTransfer][渠道编号找不到对应的支付客户端]", zap.Int64("channelId", transfer.ChannelID))
 		return false

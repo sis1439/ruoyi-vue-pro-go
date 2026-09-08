@@ -110,6 +110,9 @@ func (s *MemberSignInRecordService) GetSignInRecordPage(ctx context.Context, r *
 
 // CreateSignInRecord 创建签到记录 (Transactional)
 func (s *MemberSignInRecordService) CreateSignInRecord(ctx context.Context, userId int64) (*member.MemberSignInRecord, error) {
+	if userId <= 0 {
+		return nil, errors.NewBizError(401, "未登录")
+	}
 	// 1. Check if already signed today
 	lastRecord, _ := s.q.MemberSignInRecord.WithContext(ctx).
 		Where(s.q.MemberSignInRecord.UserID.Eq(userId)).

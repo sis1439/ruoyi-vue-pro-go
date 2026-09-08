@@ -1,7 +1,9 @@
 package permission
 
 import (
+	"context"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/database"
 
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casbin/casbin/v2/persist"
@@ -40,6 +42,7 @@ func (a *YudoAdapter) loadRolePolicy(model model.Model) error {
 	// 查询 SQL: 用于获取 角色ID -> 权限标识 的映射
 	// 过滤掉 permission 为空的菜单（目录等）
 	type Result struct {
+		TenantID   int64
 		RoleID     int64
 		Permission string
 	}
@@ -47,11 +50,11 @@ func (a *YudoAdapter) loadRolePolicy(model model.Model) error {
 	// 联表查询：system_role <-> system_role_menu <-> system_menu
 	// 使用 DISTINCT 去重
 	var results []Result
-	err := a.db.Table("system_role_menu srm").
-		Select("DISTINCT srm.role_id, sm.permission").
-		Joins("JOIN system_role sr ON sr.id = srm.role_id").
+	err := a.db.WithContext(database.PolicyReadContext(context.Background())).Table("system_role_menu srm").
+		Select("DISTINCT srm.tenant_id, srm.role_id, sm.permission").
+		Joins("JOIN system_role sr ON sr.id = srm.role_id AND sr.tenant_id = srm.tenant_id").
 		Joins("JOIN system_menu sm ON sm.id = srm.menu_id").
-		Where("sm.permission != '' AND sm.deleted = 0 AND sr.deleted = 0 AND srm.deleted = 0").
+		Where("sm.permission != '' AND sm.deleted = 0 AND sr.deleted = 0 AND srm.deleted = 0 AND sm.status = 0 AND sr.status = 0").
 		Scan(&results).Error
 
 	if err != nil {
@@ -61,7 +64,7 @@ func (a *YudoAdapter) loadRolePolicy(model model.Model) error {
 	for _, line := range results {
 		// 添加策略: p, role_id, permission, access
 		// 使用 role_id 确保多租户下的唯一性
-		persist.LoadPolicyLine(fmt.Sprintf("p, role:%d, %s, access", line.RoleID, line.Permission), model)
+		persist.LoadPolicyLine(fmt.Sprintf("p, tenant:%d:role:%d, %s, access", line.TenantID, line.RoleID, line.Permission), model)
 	}
 	return nil
 }
@@ -69,15 +72,17 @@ func (a *YudoAdapter) loadRolePolicy(model model.Model) error {
 func (a *YudoAdapter) loadUserRolePolicy(model model.Model) error {
 	// 查询 SQL: 获取 用户ID -> 角色ID 的映射
 	type Result struct {
-		UserID int64
-		RoleID int64
+		TenantID int64
+		UserID   int64
+		RoleID   int64
 	}
 
 	var results []Result
-	err := a.db.Table("system_user_role sur").
-		Select("sur.user_id, sur.role_id").
-		Joins("JOIN system_role sr ON sr.id = sur.role_id").
-		Where("sur.deleted = 0 AND sr.deleted = 0").
+	err := a.db.WithContext(database.PolicyReadContext(context.Background())).Table("system_user_role sur").
+		Select("sur.tenant_id, sur.user_id, sur.role_id").
+		Joins("JOIN system_role sr ON sr.id = sur.role_id AND sr.tenant_id = sur.tenant_id").
+		Joins("JOIN system_users su ON su.id = sur.user_id AND su.tenant_id = sur.tenant_id").
+		Where("sur.deleted = 0 AND sr.deleted = 0 AND su.deleted = 0 AND sr.status = 0 AND su.status = 0").
 		Scan(&results).Error
 
 	if err != nil {
@@ -86,7 +91,7 @@ func (a *YudoAdapter) loadUserRolePolicy(model model.Model) error {
 
 	for _, line := range results {
 		// 添加分组策略: g, userId, role_id
-		persist.LoadPolicyLine(fmt.Sprintf("g, user:%d, role:%d", line.UserID, line.RoleID), model)
+		persist.LoadPolicyLine(fmt.Sprintf("g, tenant:%d:user:%d, tenant:%d:role:%d", line.TenantID, line.UserID, line.TenantID, line.RoleID), model)
 	}
 
 	return nil

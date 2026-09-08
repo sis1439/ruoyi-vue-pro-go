@@ -1,0 +1,280 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "method": "OPTIONS",
+      "path": "/app-api/member/auth/login",
+      "approved_origin_platform_header": true,
+      "untrusted_origin_denied": true
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/system/auth/login",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/auth/get-permission-info",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/tenant/get",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/tenant/get",
+      "http": 200,
+      "code": 403
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/tenant/page",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/tenant/page",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/tenant/export-excel",
+      "own_tenant_only": true
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/infra/job/create",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/infra/job/get",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "PUT",
+      "path": "/admin-api/infra/job/update",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/infra/job/get",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin-api/infra/job/delete",
+      "http": 200,
+      "code": 500
+    },
+    {
+      "method": "PUT",
+      "path": "/admin-api/infra/job/update-status",
+      "http": 200,
+      "code": 500
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin-api/infra/job/delete-list",
+      "http": 200,
+      "code": 500
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/infra/job/get",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "PUT",
+      "path": "/admin-api/infra/job/update-status",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/infra/job/sync",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "PUT",
+      "path": "/admin-api/infra/job/update-status",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin-api/infra/job/delete",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/infra/job/sync",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/product/spu/page",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/product/category/create",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/product/category/create",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/product/brand/create",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/product/spu/create",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/product/spu/get-detail",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/app-api/member/auth/login",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/product/spu/page",
+      "http": 403,
+      "code": 403
+    },
+    {
+      "method": "POST",
+      "path": "/app-api/member/address/create",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "PUT",
+      "path": "/app-api/member/address/update",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/app-api/member/address/get",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/app-api/member/address/list",
+      "http": 403,
+      "code": 403
+    },
+    {
+      "method": "POST",
+      "path": "/app-api/trade/cart/add",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/app-api/trade/cart/get-count",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "DELETE",
+      "path": "/app-api/trade/cart/delete",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/app-api/trade/cart/get-count",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "PUT",
+      "path": "/admin-api/product/spu/update",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/product/spu/get-detail",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/product/spu/page",
+      "http": 403,
+      "code": 403
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/product/spu/page",
+      "http": 401,
+      "code": 401
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/system/auth/refresh-token",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/auth/get-permission-info",
+      "http": 401,
+      "code": 401
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/auth/get-permission-info",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "POST",
+      "path": "/admin-api/system/auth/logout",
+      "http": 200,
+      "code": 0
+    },
+    {
+      "method": "GET",
+      "path": "/admin-api/system/auth/get-permission-info",
+      "http": 401,
+      "code": 401
+    }
+  ]
+}

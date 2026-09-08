@@ -2,6 +2,7 @@ package trade
 
 import (
 	"context"
+	"time"
 
 	product2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
@@ -15,6 +16,8 @@ import (
 // PayOrderServiceAPI 定义支付订单服务接口
 type PayOrderServiceAPI interface {
 	GetOrder(ctx context.Context, id int64) (*payModel.PayOrder, error)
+	// ValidateOrderActuallyPaid 主动向渠道查单并经统一回调入口更新支付状态
+	ValidateOrderActuallyPaid(ctx context.Context, orderID int64) (*payModel.PayOrder, error)
 	UpdatePayOrderPrice(ctx context.Context, id int64, payPrice int) error
 	CreateOrder(ctx context.Context, reqDTO *pay.PayOrderCreateReq) (int64, error)
 }
@@ -47,6 +50,7 @@ type ProductSkuServiceAPI interface {
 type CouponUserServiceAPI interface {
 	UseCoupon(ctx context.Context, userId int64, id int64, orderId int64) error
 	ReturnCoupon(ctx context.Context, userId int64, id int64) error
+	ReturnCouponForOrder(ctx context.Context, userId, id, orderId int64) error
 	GetCoupon(ctx context.Context, userId int64, id int64) (*promotion.PromotionCoupon, error)
 }
 
@@ -64,4 +68,5 @@ type TradeConfigServiceAPI interface {
 // TradeNoRedisDAOAPI 定义 Redis 编号生成接口
 type TradeNoRedisDAOAPI interface {
 	Generate(ctx context.Context, prefix string) (string, error)
+	AcquireSyncSlot(ctx context.Context, orderID int64, ttl time.Duration) (bool, error)
 }

@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"strings"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/system"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
@@ -24,7 +25,9 @@ func NewSmsLogService(q *query.Query) *SmsLogService {
 
 // CreateSmsLog 创建短信日志
 func (s *SmsLogService) CreateSmsLog(ctx context.Context, item *model.SystemSmsLog) (int64, error) {
-	err := s.q.SystemSmsLog.WithContext(ctx).Create(item)
+	redacted := redactSmsAudit(item)
+	err := s.q.SystemSmsLog.WithContext(ctx).Create(redacted)
+	item.ID = redacted.ID
 	return item.ID, err
 }
 
@@ -54,19 +57,46 @@ func (s *SmsLogService) CreateSmsLogWithStatus(ctx context.Context, mobile strin
 		SendTime:        nil,
 		ReceiveStatus:   consts.SmsReceiveStatusInit,
 	}
-	err := s.q.SystemSmsLog.WithContext(ctx).Create(log)
-	return log.ID, err
+	return s.CreateSmsLog(ctx, log)
 }
 
 // UpdateSmsLog 更新短信日志
 func (s *SmsLogService) UpdateSmsLog(ctx context.Context, item *model.SystemSmsLog) error {
-	_, err := s.q.SystemSmsLog.WithContext(ctx).Where(s.q.SystemSmsLog.ID.Eq(item.ID)).Updates(item)
+	_, err := s.q.SystemSmsLog.WithContext(ctx).Where(s.q.SystemSmsLog.ID.Eq(item.ID)).Updates(redactSmsAudit(item))
 	return err
 }
 
 // UpdateSmsLogFields 更新短信日志指定字段
 func (s *SmsLogService) UpdateSmsLogFields(ctx context.Context, logId int64, updates map[string]interface{}) error {
-	_, err := s.q.SystemSmsLog.WithContext(ctx).Where(s.q.SystemSmsLog.ID.Eq(logId)).Updates(updates)
+	item, err := s.q.SystemSmsLog.WithContext(ctx).Where(s.q.SystemSmsLog.ID.Eq(logId)).First()
+	if err != nil {
+		return err
+	}
+	if sensitiveSmsAudit(item) {
+		safe := make(map[string]any, len(updates))
+		for key, value := range updates {
+			safe[key] = value
+		}
+		for _, key := range []string{"template_content", "template_params", "mobile", "api_send_msg", "api_receive_msg", "api_request_id", "api_serial_no", "api_receive_code"} {
+			if _, ok := safe[key]; ok {
+				if key == "template_params" {
+					safe[key] = map[string]any{"code": "[REDACTED]"}
+				} else {
+					safe[key] = "[REDACTED]"
+				}
+			}
+		}
+		if code, ok := safe["api_send_code"]; ok {
+			if text, ok := code.(string); ok && strings.EqualFold(text, "OK") {
+				safe["api_send_code"] = "OK"
+			} else {
+				safe["api_send_code"] = "FAILED"
+			}
+		}
+		updates = safe
+	}
+
+	_, err = s.q.SystemSmsLog.WithContext(ctx).Where(s.q.SystemSmsLog.ID.Eq(logId)).Updates(updates)
 	return err
 }
 
@@ -108,6 +138,7 @@ func (s *SmsLogService) GetSmsLogPage(ctx context.Context, req *system.SmsLogPag
 }
 
 func (s *SmsLogService) convertResp(item *model.SystemSmsLog) *system.SmsLogRespVO {
+	item = redactSmsAudit(item)
 	return &system.SmsLogRespVO{
 		ID:              item.ID,
 		ChannelId:       item.ChannelId,
@@ -133,4 +164,39 @@ func (s *SmsLogService) convertResp(item *model.SystemSmsLog) *system.SmsLogResp
 		ApiReceiveMsg:   item.ApiReceiveMsg,
 		CreateTime:      item.CreateTime,
 	}
+}
+
+// Redact on write and read: historical rows must not leak through page or export.
+func sensitiveSmsAudit(item *model.SystemSmsLog) bool {
+	for _, scene := range SceneMap {
+		if item.TemplateCode == scene.TemplateCode {
+			return true
+		}
+	}
+	for key := range item.TemplateParams {
+		if strings.EqualFold(key, "code") {
+			return true
+		}
+	}
+	return false
+}
+func redactSmsAudit(item *model.SystemSmsLog) *model.SystemSmsLog {
+	copy := *item
+	if !sensitiveSmsAudit(item) {
+		return &copy
+	}
+	copy.TemplateContent = "[REDACTED]"
+	copy.TemplateParams = map[string]any{"code": "[REDACTED]"}
+	copy.Mobile = "[REDACTED]"
+	copy.ApiSendMsg = "[REDACTED]"
+	copy.ApiReceiveMsg = "[REDACTED]"
+	copy.ApiRequestId = ""
+	copy.ApiSerialNo = ""
+	copy.ApiReceiveCode = ""
+	if strings.EqualFold(copy.ApiSendCode, "OK") {
+		copy.ApiSendCode = "OK"
+	} else if copy.ApiSendCode != "" {
+		copy.ApiSendCode = "FAILED"
+	}
+	return &copy
 }

@@ -24,3 +24,10 @@ config/*.local.yaml
 main
 cmd/server/server
 server-linux
+
+# Local Python validation caches
+__pycache__/
+*.pyc
+
+# Local integration acceptance output
+/integration-results.jsonl

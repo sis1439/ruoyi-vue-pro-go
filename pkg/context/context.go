@@ -8,6 +8,7 @@ import (
 
 const (
 	CtxUserIDKey     = "userID"
+	CtxTenantIDKey   = "trustedTenantID"
 	CtxLoginUserKey  = "loginUser"
 	CtxGinContextKey = "GinContext" // 用于在 context.Context 中传递 gin.Context
 )
@@ -15,7 +16,7 @@ const (
 // LoginUser 登录用户信息，与 Java 的 LoginUser 对齐
 type LoginUser struct {
 	UserID   int64  `json:"userId"`
-	UserType int    `json:"userType"` // 0: Member, 1: Admin
+	UserType int    `json:"userType"` // 1: Member, 2: Admin
 	TenantID int64  `json:"tenantId"`
 	DeptID   *int64 `json:"deptId"` // 部门ID (用于数据权限)
 	Nickname string `json:"nickname"`
@@ -61,6 +62,7 @@ func SetLoginUser(c *gin.Context, user *LoginUser) {
 	if user != nil {
 		c.Set(CtxUserIDKey, user.UserID)
 		c.Set(CtxLoginUserKey, user)
+		c.Request = c.Request.WithContext(WithLoginUser(c.Request.Context(), user))
 	}
 }
 
@@ -80,6 +82,10 @@ func GetLoginUserFromContext(ctx context.Context) *LoginUser {
 		return nil
 	}
 
+	if user, ok := ctx.Value(CtxLoginUserKey).(*LoginUser); ok {
+		return user
+	}
+
 	// 尝试从context中获取gin.Context
 	if ginCtx, ok := ctx.Value(CtxGinContextKey).(*gin.Context); ok {
 		return GetLoginUser(ginCtx)
@@ -91,4 +97,29 @@ func GetLoginUserFromContext(ctx context.Context) *LoginUser {
 	}
 
 	return nil
+}
+
+// WithLoginUser carries a copy of a trusted identity into jobs and database calls.
+func WithLoginUser(ctx context.Context, user *LoginUser) context.Context {
+	if user == nil {
+		return ctx
+	}
+	identity := *user
+	return context.WithValue(ctx, CtxLoginUserKey, &identity)
+}
+
+// WithTenant is for tenant identities resolved by trusted server-side configuration or records.
+func WithTenant(ctx context.Context, tenantID int64) context.Context {
+	return context.WithValue(ctx, CtxTenantIDKey, tenantID)
+}
+
+func TenantID(ctx context.Context) (int64, bool) {
+	if user := GetLoginUserFromContext(ctx); user != nil {
+		return user.TenantID, user.TenantID > 0
+	}
+	if ctx == nil {
+		return 0, false
+	}
+	id, _ := ctx.Value(CtxTenantIDKey).(int64)
+	return id, id > 0
 }

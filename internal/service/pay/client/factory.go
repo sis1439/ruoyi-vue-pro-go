@@ -1,7 +1,7 @@
 package client
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -17,19 +17,16 @@ func NewPayClientFactory() *PayClientFactory {
 	}
 }
 
-// GetPayClient 获得支付客户端
+// GetPayClient 获得支付客户端。进程重启后缓存为空，调用方应改用
+// PayChannelService.GetOrCreatePayClient 以便从数据库重建。
 func (f *PayClientFactory) GetPayClient(channelID int64) PayClient {
 	f.mutex.RLock()
 	defer f.mutex.RUnlock()
 	return f.clients[channelID]
 }
 
-// RegisterClient 注册客户端 (用于扩展，避免硬编码 switch)
-// Currently simplifying: we will hardcode the switch in CreateOrUpdate for simplicity unless we want a registry pattern.
-// Given Go's static nature, a registry or simple switch in a "provider" package implies circular deps if not careful.
-// Best approach: Define 'Creator' function type.
-
-type ClientCreator func(channelID int64, config string) (PayClient, error)
+// ClientCreator 渠道客户端构造函数。channelCode 必须透传，渠道实现依赖它分派下单方式。
+type ClientCreator func(channelID int64, channelCode string, config string) (PayClient, error)
 
 var creators = make(map[string]ClientCreator)
 
@@ -37,33 +34,27 @@ func RegisterCreator(channelCode string, creator ClientCreator) {
 	creators[channelCode] = creator
 }
 
+// SupportedChannelCodes 已注册的渠道编码，供配置校验使用
+func SupportedChannelCodes() []string {
+	codes := make([]string, 0, len(creators))
+	for code := range creators {
+		codes = append(codes, code)
+	}
+	return codes
+}
+
 // CreateOrUpdatePayClient 创建或更新支付客户端
 func (f *PayClientFactory) CreateOrUpdatePayClient(channelID int64, channelCode string, config string) (PayClient, error) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
 
-	client := f.clients[channelID]
-	if client != nil {
-		// Verify if change is needed, implementation dependent. For now, we recreate.
-		// Real logic: client.Refresh(config)
-	}
-
 	creator, ok := creators[channelCode]
 	if !ok {
-		// Use "mock" as fallback or specific codes
-		if channelCode == "mock" {
-			// return new MockClient
-		}
-		// Try generic creators if needed, or specific prefixes?
-		// For now if not found, error
-		// return nil, fmt.Errorf("channel code %s not supported", channelCode)
-
-		// Temporary Logic: If no creator found, return logic for Mock?
-		// We will implement Alipay/WxPay creators and register them at init.
-		return nil, errors.New("channel not supported")
+		// 不回退到 Mock：配置错误必须显式失败，否则会伪造支付成功
+		return nil, fmt.Errorf("支付渠道 %s 未实现", channelCode)
 	}
 
-	newClient, err := creator(channelID, config)
+	newClient, err := creator(channelID, channelCode, config)
 	if err != nil {
 		return nil, err
 	}
@@ -72,4 +63,11 @@ func (f *PayClientFactory) CreateOrUpdatePayClient(channelID int64, channelCode 
 	}
 	f.clients[channelID] = newClient
 	return newClient, nil
+}
+
+// RemovePayClient 渠道停用/删除后移除缓存，避免停用渠道仍可下单
+func (f *PayClientFactory) RemovePayClient(channelID int64) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	delete(f.clients, channelID)
 }

@@ -1,0 +1,21 @@
+=== RUN   TestPostgresMigrationCoverageAndRepeat
+--- PASS: TestPostgresMigrationCoverageAndRepeat (0.21s)
+=== RUN   TestPostgresBaselineUpgradePreservesData
+--- PASS: TestPostgresBaselineUpgradePreservesData (0.15s)
+=== RUN   TestPostgresTypeRoundTripsZeroUpdateAndSoftDelete
+
+2026/09/07 21:49:34 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/migrations/postgres_test.go:93 [35;1mrecord not found
+[0m[33m[0.121ms] [34;1m[rows:0][0m SELECT * FROM "product_sku" WHERE "product_sku"."id" = 1 AND "product_sku"."deleted" = 0 AND "product_sku"."id" = 1 ORDER BY "product_sku"."id" LIMIT 1
+--- PASS: TestPostgresTypeRoundTripsZeroUpdateAndSoftDelete (0.30s)
+=== RUN   TestPostgresConstraintsRollbackUpsertAndLock
+
+2026/09/07 21:49:34 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/migrations/postgres_test.go:124 [35;1mERROR: duplicate key value violates unique constraint "member_user_tenant_mobile_live" (SQLSTATE 23505)
+[0m[33m[0.668ms] [34;1m[rows:0][0m INSERT INTO "member_user" ("mobile","password","status","register_ip","register_terminal","login_ip","login_date","nickname","avatar","name","sex","birthday","area_id","mark","point","tag_ids","level_id","experience","group_id","creator","updater","create_time","update_time","tenant_id") VALUES ('15500000003','',0,'',0,'',NULL,'','','',0,NULL,0,'',0,'',0,0,0,'','','2026-09-07 21:49:34.718','2026-09-07 21:49:34.718',1) RETURNING "id","deleted"
+
+2026/09/07 21:49:34 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/migrations/postgres_test.go:149 [35;1mERROR: could not obtain lock on row in relation "product_sku" (SQLSTATE 55P03)
+[0m[33m[0.585ms] [34;1m[rows:0][0m SELECT * FROM "product_sku" WHERE "product_sku"."id" = 1 AND "product_sku"."deleted" = 0 ORDER BY "product_sku"."id" LIMIT 1 FOR UPDATE NOWAIT
+--- PASS: TestPostgresConstraintsRollbackUpsertAndLock (0.16s)
+=== RUN   TestPostgresMigrationReleasesCallerConnection
+--- PASS: TestPostgresMigrationReleasesCallerConnection (0.19s)
+PASS
+ok  	github.com/wxlbd/ruoyi-mall-go/migrations	1.484s

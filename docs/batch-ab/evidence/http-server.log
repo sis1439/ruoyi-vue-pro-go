@@ -1,0 +1,53 @@
+2026/09/08 09:06:06 database is at latest migration
+2026/09/08 09:06:07 tenant platform read: load RBAC policy
+2026/09/08 09:06:07 tenant platform read: load RBAC policy
+2026/09/08 09:06:07 tenant platform read: load RBAC policy
+2026/09/08 09:06:07 tenant platform read: load RBAC policy
+Initializing Router...
+GET /ping 200 348.458µs
+POST /admin-api/system/auth/login 200 73.828583ms
+GET /admin-api/system/auth/get-permission-info 200 4.642208ms
+GET /admin-api/system/tenant/get 200 3.65075ms
+GET /admin-api/system/tenant/get 200 2.042333ms
+GET /admin-api/system/tenant/page 200 2.590625ms
+GET /admin-api/system/tenant/page 200 2.61275ms
+GET /admin-api/system/tenant/export-excel 200 4.616542ms
+POST /admin-api/infra/job/create 200 3.532875ms
+GET /admin-api/infra/job/get 200 2.428666ms
+PUT /admin-api/infra/job/update 200 3.388625ms
+GET /admin-api/infra/job/get 200 2.063458ms
+DELETE /admin-api/infra/job/delete 200 2.262ms
+PUT /admin-api/infra/job/update-status 200 2.463125ms
+DELETE /admin-api/infra/job/delete-list 200 2.920208ms
+GET /admin-api/infra/job/get 200 2.468667ms
+PUT /admin-api/infra/job/update-status 200 2.929875ms
+POST /admin-api/infra/job/sync 200 3.26775ms
+PUT /admin-api/infra/job/update-status 200 3.433ms
+DELETE /admin-api/infra/job/delete 200 2.934375ms
+POST /admin-api/infra/job/sync 200 2.737208ms
+GET /admin-api/product/spu/page 200 2.953209ms
+POST /admin-api/product/category/create 200 3.504833ms
+POST /admin-api/product/category/create 200 2.29975ms
+POST /admin-api/product/brand/create 200 2.657708ms
+POST /admin-api/product/spu/create 200 3.705459ms
+GET /admin-api/product/spu/get-detail 200 2.381375ms
+POST /app-api/member/auth/login 200 52.469625ms
+GET /admin-api/product/spu/page 403 55.042µs
+POST /app-api/member/address/create 200 1.595208ms
+PUT /app-api/member/address/update 200 898µs
+GET /app-api/member/address/get 200 840.5µs
+GET /app-api/member/address/list 403 23.041µs
+POST /app-api/trade/cart/add 200 1.831333ms
+GET /app-api/trade/cart/get-count 200 1.414833ms
+GET /ping 200 12.917µs
+DELETE /app-api/trade/cart/delete 200 832.541µs
+GET /app-api/trade/cart/get-count 200 488.375µs
+PUT /admin-api/product/spu/update 200 3.544042ms
+GET /admin-api/product/spu/get-detail 200 2.124334ms
+GET /admin-api/product/spu/page 403 18.834µs
+GET /admin-api/product/spu/page 401 428.709µs
+POST /admin-api/system/auth/refresh-token 200 1.249208ms
+GET /admin-api/system/auth/get-permission-info 401 183.417µs
+GET /admin-api/system/auth/get-permission-info 200 3.910042ms
+POST /admin-api/system/auth/logout 200 1.9265ms
+GET /admin-api/system/auth/get-permission-info 401 153.25µs

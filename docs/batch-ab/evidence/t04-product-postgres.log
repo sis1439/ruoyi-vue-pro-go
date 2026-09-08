@@ -1,0 +1,24 @@
+=== RUN   TestProductTransactionPostgresCreateFailure
+=== RUN   TestProductTransactionPostgresCreateFailure/second-sku
+
+2026/09/07 21:47:43 [31;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/sku.go:158 [35;1mERROR: second SKU failure (SQLSTATE P0001)
+[0m[33m[0.730ms] [34;1m[rows:0][0m INSERT INTO "product_sku" ("spu_id","properties","price","market_price","cost_price","bar_code","pic_url","stock","weight","volume","first_brokerage_price","second_brokerage_price","sales_count","creator","updater","create_time","update_time","tenant_id") VALUES (1,'[{"propertyId":1,"propertyName":"","valueId":1,"valueName":""}]',100,200,50,'bar','sku',3,2,4,2,1,0,'','','2026-09-07 21:47:43.902','2026-09-07 21:47:43.902',1),(1,'[{"propertyId":1,"propertyName":"","valueId":2,"valueName":""}]',100,200,50,'reject','sku',3,2,4,2,1,0,'','','2026-09-07 21:47:43.902','2026-09-07 21:47:43.902',1) RETURNING "id","deleted"
+=== RUN   TestProductTransactionPostgresCreateFailure/commit
+--- PASS: TestProductTransactionPostgresCreateFailure (0.32s)
+    --- PASS: TestProductTransactionPostgresCreateFailure/second-sku (0.17s)
+    --- PASS: TestProductTransactionPostgresCreateFailure/commit (0.15s)
+=== RUN   TestProductTransactionPostgresUpdateAndDelete
+
+2026/09/07 21:47:44 [34;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/transaction_test.go:126
+[0m[35m[warn] [0mremoving callback `test:sku-fail` from /Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/transaction_test.go:126
+
+2026/09/07 21:47:44 [34;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/transaction_test.go:163
+[0m[35m[warn] [0mremoving callback `test:delete-fail` from /Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/transaction_test.go:163
+
+2026/09/07 21:47:44 [34;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/transaction_test.go:181
+[0m[35m[warn] [0mremoving callback `test:delete-fail` from /Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/product/transaction_test.go:181
+--- PASS: TestProductTransactionPostgresUpdateAndDelete (0.16s)
+=== RUN   TestProductTransactionPostgresForeignSku
+--- PASS: TestProductTransactionPostgresForeignSku (0.15s)
+PASS
+ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/product	1.265s

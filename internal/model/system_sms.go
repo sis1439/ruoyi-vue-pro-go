@@ -18,7 +18,7 @@ type SystemSmsChannel struct {
 	CallbackUrl string `gorm:"size:255;comment:短信发送回调 URL" json:"callbackUrl"`
 
 	// Base fields
-	BaseDO
+	TenantBaseDO
 }
 
 func (SystemSmsChannel) TableName() string {
@@ -40,7 +40,7 @@ type SystemSmsTemplate struct {
 	ChannelCode   string                      `gorm:"size:63;not null;comment:短信渠道编码" json:"channelCode"`
 
 	// Base fields
-	BaseDO
+	TenantBaseDO
 }
 
 func (SystemSmsTemplate) TableName() string {
@@ -73,7 +73,7 @@ type SystemSmsLog struct {
 	ApiReceiveMsg   string                 `gorm:"size:255;comment:短信 API 接收结果的提示" json:"apiReceiveMsg"`
 
 	// Base fields
-	BaseDO
+	TenantBaseDO
 }
 
 func (SystemSmsLog) TableName() string {
@@ -93,7 +93,7 @@ type SystemSmsCode struct {
 	UsedIp     string     `gorm:"size:30;comment:使用 IP" json:"usedIp"`
 
 	// Base fields
-	BaseDO
+	TenantBaseDO
 }
 
 func (SystemSmsCode) TableName() string {

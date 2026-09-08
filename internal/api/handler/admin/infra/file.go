@@ -2,6 +2,7 @@ package infra
 
 import (
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -164,6 +165,7 @@ func NewFileHandler(svc *infra.FileService) *FileHandler {
 }
 
 func (h *FileHandler) UploadFile(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, infra.MaxFileSize+1024*1024)
 	file, err := c.FormFile("file")
 	if err != nil {
 		response.WriteBizError(c, errors.ErrParam)
@@ -181,7 +183,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 	}
 	defer f.Close()
 
-	content, err := io.ReadAll(f)
+	content, err := io.ReadAll(io.LimitReader(f, infra.MaxFileSize+1))
 	if err != nil {
 		response.WriteBizError(c, err)
 		return
@@ -272,7 +274,7 @@ func (h *FileHandler) GetFilePresignedUrl(c *gin.Context) {
 			return
 		}
 		var err error
-		path, err = h.svc.GenerateUploadPath(name, directory)
+		path, err = h.svc.GenerateUploadPath(c, name, directory)
 		if err != nil {
 			response.WriteBizError(c, err)
 			return

@@ -1,0 +1,80 @@
+=== RUN   TestOrderTransactionPostgresFailures
+=== RUN   TestOrderTransactionPostgresFailures/second-sku
+    order_transaction_test.go:258: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:258
+        	Error:      	An error is expected but got nil.
+        	Test:       	TestOrderTransactionPostgresFailures/second-sku
+=== RUN   TestOrderTransactionPostgresFailures/coupon
+    order_transaction_test.go:258: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:258
+        	Error:      	An error is expected but got nil.
+        	Test:       	TestOrderTransactionPostgresFailures/coupon
+=== RUN   TestOrderTransactionPostgresFailures/points
+    order_transaction_test.go:258: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:258
+        	Error:      	An error is expected but got nil.
+        	Test:       	TestOrderTransactionPostgresFailures/points
+=== RUN   TestOrderTransactionPostgresFailures/ledger
+    order_transaction_test.go:258: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:258
+        	Error:      	An error is expected but got nil.
+        	Test:       	TestOrderTransactionPostgresFailures/ledger
+
+2026/09/07 21:49:36 [34;1m/opt/homebrew/Cellar/go/1.26.2/libexec/src/runtime/panic.go:694
+[0m[35m[warn] [0mremoving callback `test:fail` from /opt/homebrew/Cellar/go/1.26.2/libexec/src/runtime/panic.go:694
+=== RUN   TestOrderTransactionPostgresFailures/pay
+
+2026/09/07 21:49:36 [34;1m/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:267
+[0m[35m[warn] [0mremoving callback `test:fail` from /Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:267
+=== RUN   TestOrderTransactionPostgresFailures/pay-link
+    order_transaction_test.go:266: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:163
+        	            				/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:266
+        	Error:      	"[{1 1 0  20260907214936239985 test test 等 2 件商品  180 0 0 0 127.0.0.1 2026-09-07 23:49:36.980089 +0800 CST <nil> 0  0   {{  2026-09-07 21:49:36.980531 +0800 CST 2026-09-07 21:49:36.980531 +0800 CST false} 1}}]" should have 0 item(s), but has 1
+        	Test:       	TestOrderTransactionPostgresFailures/pay-link
+
+2026/09/07 21:49:36 [34;1m/opt/homebrew/Cellar/go/1.26.2/libexec/src/runtime/panic.go:694
+[0m[35m[warn] [0mremoving callback `test:fail` from /opt/homebrew/Cellar/go/1.26.2/libexec/src/runtime/panic.go:694
+=== RUN   TestOrderTransactionPostgresFailures/commit
+    order_transaction_test.go:266: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:163
+        	            				/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:266
+        	Error:      	"[{1 1 0  20260907214937168092 test test 等 2 件商品  180 0 0 0 127.0.0.1 2026-09-07 23:49:37.141077 +0800 CST <nil> 0  0   {{  2026-09-07 21:49:37.141507 +0800 CST 2026-09-07 21:49:37.141507 +0800 CST false} 1}}]" should have 0 item(s), but has 1
+        	Test:       	TestOrderTransactionPostgresFailures/commit
+--- FAIL: TestOrderTransactionPostgresFailures (1.13s)
+    --- FAIL: TestOrderTransactionPostgresFailures/second-sku (0.18s)
+    --- FAIL: TestOrderTransactionPostgresFailures/coupon (0.15s)
+    --- FAIL: TestOrderTransactionPostgresFailures/points (0.16s)
+    --- FAIL: TestOrderTransactionPostgresFailures/ledger (0.18s)
+    --- PASS: TestOrderTransactionPostgresFailures/pay (0.15s)
+    --- FAIL: TestOrderTransactionPostgresFailures/pay-link (0.15s)
+    --- FAIL: TestOrderTransactionPostgresFailures/commit (0.16s)
+=== RUN   TestOrderTransactionPostgresCompetition
+=== RUN   TestOrderTransactionPostgresCompetition/last-stock
+    order_transaction_test.go:314: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:314
+        	Error:      	Not equal: 
+        	            	expected: 1
+        	            	actual  : 2
+        	Test:       	TestOrderTransactionPostgresCompetition/last-stock
+=== RUN   TestOrderTransactionPostgresCompetition/coupon
+    order_transaction_test.go:314: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:314
+        	Error:      	Not equal: 
+        	            	expected: 1
+        	            	actual  : 2
+        	Test:       	TestOrderTransactionPostgresCompetition/coupon
+=== RUN   TestOrderTransactionPostgresCompetition/points
+    order_transaction_test.go:314: 
+        	Error Trace:	/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/internal/service/mall/trade/order_transaction_test.go:314
+        	Error:      	Not equal: 
+        	            	expected: 1
+        	            	actual  : 2
+        	Test:       	TestOrderTransactionPostgresCompetition/points
+--- FAIL: TestOrderTransactionPostgresCompetition (0.48s)
+    --- FAIL: TestOrderTransactionPostgresCompetition/last-stock (0.16s)
+    --- FAIL: TestOrderTransactionPostgresCompetition/coupon (0.16s)
+    --- FAIL: TestOrderTransactionPostgresCompetition/points (0.16s)
+FAIL
+FAIL	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/trade	2.245s
+FAIL

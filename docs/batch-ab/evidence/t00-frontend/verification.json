@@ -1,0 +1,30 @@
+{
+  "h5": {
+    "files": 179,
+    "bytes": 2291432,
+    "same_as_first_build": true,
+    "changed_files": []
+  },
+  "mp-weixin": {
+    "files": 877,
+    "bytes": 1985079,
+    "same_as_first_build": true,
+    "changed_files": []
+  },
+  "lock_sha256": "36a1f5372912db488c37d59fb26ce54860248ed425d7f9f966deaf19c41c95fb",
+  "lock_unchanged_after_ci": true,
+  "h5_entry_assets_checked": [
+    "/assets/uni.50cb0f50.css",
+    "/assets/index-Drn_Htxj.js",
+    "/assets/index-BUrRfK0o.css"
+  ],
+  "mp_registered_pages_checked": 58,
+  "mp_json_files_parsed": 199,
+  "npm_ci_exit_code": 0,
+  "npm_ls_all_exit_code": 0,
+  "first_and_clean_build_exit_codes": {
+    "h5": 0,
+    "mp-weixin": 0
+  },
+  "scope": "Same checkout, runtime and OS; clean npm ci and removed dist/build before second builds. No browser or WeChat DevTools runtime acceptance."
+}

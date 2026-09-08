@@ -1,0 +1,7 @@
+
+# Preserve verbatim terminal evidence, including CR and assertion indentation.
+docs/batch-ab/evidence/**/*.log -whitespace
+docs/batch-ab/evidence/*.log -whitespace
+# CSV uses standard CRLF records; exported git patches retain original context.
+docs/batch-ab/*.csv whitespace=cr-at-eol
+docs/batch-ab/*.patch -whitespace

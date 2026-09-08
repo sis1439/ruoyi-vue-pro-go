@@ -1,0 +1,4 @@
+# ./...
+pattern ./...: open /Users/macmini/Library/Caches/go-build/7f/7fcb2cd3263fc0abb41226c130fd5b9d8319e1c870416950e51d79a196f991e2-d: operation not permitted
+FAIL	./... [setup failed]
+FAIL

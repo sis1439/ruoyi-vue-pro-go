@@ -2,8 +2,15 @@ package system
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"errors"
 	"fmt"
-	"math/rand"
+	"github.com/google/uuid"
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,7 +18,6 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	bzErr "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
-	"go.uber.org/zap"
 )
 
 // ========== SMS 验证码场景常量 ==========
@@ -100,172 +106,187 @@ var (
 // ========== SMS 验证码服务 ==========
 
 type SmsCodeService struct {
-	q              *query.Query
-	rdb            *redis.Client
-	smsSendService *SmsSendService
+	q    *query.Query
+	rdb  *redis.Client
+	send func(context.Context, string, int64, string, map[string]any) (int64, error)
 }
 
 func NewSmsCodeService(q *query.Query, rdb *redis.Client, smsSendService *SmsSendService) *SmsCodeService {
-	return &SmsCodeService{
-		q:              q,
-		rdb:            rdb,
-		smsSendService: smsSendService,
+	s := &SmsCodeService{q: q, rdb: rdb}
+	if smsSendService != nil {
+		s.send = func(ctx context.Context, mobile string, userID int64, templateCode string, params map[string]any) (int64, error) {
+			template, err := smsSendService.validateSmsTemplate(ctx, templateCode)
+			if err != nil {
+				return 0, err
+			}
+			channel, err := smsSendService.validateSmsChannel(ctx, template.ChannelId)
+			if err != nil {
+				return 0, err
+			}
+			if template.Status != consts.CommonStatusEnable || channel.Status != consts.CommonStatusEnable || (channel.Code != consts.SMSChannelCodeAliyun && channel.Code != consts.SMSChannelCodeTencent) {
+				return 0, fmt.Errorf("SMS delivery unavailable")
+			}
+			logID, err := smsSendService.SendSingleSmsToMember(ctx, mobile, userID, templateCode, params)
+			if err != nil {
+				return 0, err
+			}
+			tenant, ok := pkgContext.TenantID(ctx)
+			if !ok {
+				return 0, fmt.Errorf("trusted tenant required")
+			}
+			logs := q.SystemSmsLog
+			log, err := logs.WithContext(ctx).Where(logs.ID.Eq(logID), logs.TenantID.Eq(tenant)).First()
+			if err != nil {
+				return 0, err
+			}
+			if log.SendStatus != consts.SmsSendStatusSuccess || !strings.EqualFold(log.ApiSendCode, "OK") {
+				return 0, fmt.Errorf("SMS delivery not confirmed")
+			}
+			return logID, nil
+		}
 	}
+	return s
 }
+
+// Reserve the phone budget atomically across scenes and invalidate any older code.
+var reserveSmsCode = redis.NewScript(`
+if redis.call('EXISTS',KEYS[1]) == 1 then return -1 end
+local n=tonumber(redis.call('GET',KEYS[2]) or '0')
+if n >= tonumber(ARGV[1]) then return -2 end
+redis.call('SET',KEYS[1],ARGV[2],'PX',ARGV[3])
+n=redis.call('INCR',KEYS[2])
+if n == 1 then redis.call('PEXPIRE',KEYS[2],ARGV[4]) end
+redis.call('DEL',KEYS[3])
+return n
+`)
+var activateSmsCode = redis.NewScript(`
+if redis.call('GET',KEYS[1]) ~= ARGV[1] then return 0 end
+redis.call('SET',KEYS[2],ARGV[2],'PX',ARGV[3])
+return 1
+`)
 
 // SendSmsCode 发送短信验证码（完整版本，对齐 Java）
 func (s *SmsCodeService) SendSmsCode(ctx context.Context, mobile string, scene int32, createIp string) error {
-	// 1. 验证 scene 有效性
-	sceneEnum := GetSceneEnum(scene)
-	if sceneEnum == nil {
-		return ErrSmsSceneInvalid
-	}
-
-	// 2. 检查发送频率（1 分钟内最多发送一次）
-	rateLimitKey := fmt.Sprintf("%s%s:%d", SmsCodeRateLimitPrefix, mobile, scene)
-	exists, err := s.rdb.Exists(ctx, rateLimitKey).Result()
+	key, err := s.getCacheKey(ctx, mobile, scene)
 	if err != nil {
 		return err
 	}
-	if exists > 0 {
+	if s.q == nil || s.rdb == nil || s.send == nil {
+		return fmt.Errorf("SMS dependencies unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	tenant, _ := pkgContext.TenantID(ctx)
+	nonce := uuid.NewString()
+	rateKey := fmt.Sprintf("%s{%d:%s}", SmsCodeRateLimitPrefix, tenant, mobile)
+	dailyKey := rateKey + ":day:" + time.Now().UTC().Format("2006-01-02")
+	n, err := reserveSmsCode.Run(ctx, s.rdb.WithTimeout(time.Second), []string{rateKey, dailyKey, key}, SmsCodeMaxPerDay, nonce, SmsCodeSendFrequency.Milliseconds(), (24 * time.Hour).Milliseconds()).Int64()
+	if err != nil {
+		return err
+	}
+	if n == -1 {
 		return ErrSmsCodeSendTooFast
 	}
-
-	// 3. 检查每日发送数量限制
-	// 查询最后一条记录
-	lastCode, err := s.getLastSmsCode(ctx, mobile, scene)
-	if err != nil && !strings.Contains(err.Error(), "record not found") {
-		return err
+	if n == -2 {
+		return ErrSmsCodeExceedMaxPerDay
 	}
-
-	var todayIndex int32 = 1
-	if lastCode != nil && isToday(lastCode.CreateTime) {
-		// 如果今天已发过，检查是否超过限制
-		if lastCode.TodayIndex >= int32(SmsCodeMaxPerDay) {
-			return ErrSmsCodeExceedMaxPerDay
-		}
-		todayIndex = lastCode.TodayIndex + 1
-	}
-
-	// 4. 生成验证码（对齐 Java：4-6 位数字）
-	code := fmt.Sprintf("%04d", rand.Intn(10000))
-
-	// 5. 保存到 Redis（用于快速查询和过期管理）
-	key := s.getCacheKey(mobile, scene)
-	if err := s.rdb.Set(ctx, key, code, SmsCodeExpire).Err(); err != nil {
-		return err
-	}
-
-	// 6. 设置频率限制 key
-	if err := s.rdb.Set(ctx, rateLimitKey, "1", SmsCodeSendFrequency).Err(); err != nil {
-		return err
-	}
-
-	// 7. 保存到数据库（完整记录生命周期，对齐 Java）
-	smsCode := &model.SystemSmsCode{
-		Mobile:     mobile,
-		Code:       code,
-		Scene:      scene,
-		Used:       false,
-		TodayIndex: todayIndex,
-		CreateIp:   createIp,
-	}
-	if err := s.q.SystemSmsCode.WithContext(ctx).Create(smsCode); err != nil {
-		zap.L().Error("Failed to save SMS code to DB", zap.Error(err))
-		// 即使数据库保存失败，也继续发送短信（但记录日志）
-	}
-
-	// 8. 发送短信（通过模板编码）
-	params := map[string]interface{}{
-		"code": code,
-	}
-	_, err = s.smsSendService.SendSingleSmsToMember(ctx, mobile, 0, sceneEnum.TemplateCode, params)
+	value, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {
-		zap.L().Error("Failed to send SMS code",
-			zap.String("mobile", mobile),
-			zap.Int32("scene", scene),
-			zap.Error(err))
 		return err
 	}
-
+	code := fmt.Sprintf("%06d", value.Int64())
+	// Redis binds the verified code to this immutable audit ID; no OTP is needed in SQL.
+	record := &model.SystemSmsCode{Mobile: mobile, Code: "[OTP]", Scene: scene, TodayIndex: int32(n), CreateIp: createIp, TenantBaseDO: model.TenantBaseDO{TenantID: tenant}}
+	if err = s.q.SystemSmsCode.WithContext(ctx).Create(record); err != nil {
+		return err
+	}
+	// A code is never usable before delivery succeeds. Failure requires no best-effort deletion.
+	if _, err = s.send(ctx, mobile, 0, GetSceneEnum(scene).TemplateCode, map[string]any{"code": code}); err != nil {
+		return fmt.Errorf("SMS delivery failed")
+	}
+	active, err := activateSmsCode.Run(ctx, s.rdb.WithTimeout(time.Second), []string{rateKey, key}, nonce, fmt.Sprintf("%d:%s", record.ID, code), SmsCodeExpire.Milliseconds()).Int64()
+	if err != nil {
+		return err
+	}
+	if active != 1 {
+		return fmt.Errorf("SMS delivery reservation expired")
+	}
 	return nil
 }
 
-// ValidateSmsCode 仅验证验证码（不标记为已使用，对齐 Java）
+// ValidateSmsCode is a preflight only. Authentication MUST call UseSmsCode.
 func (s *SmsCodeService) ValidateSmsCode(ctx context.Context, mobile string, scene int32, code string) error {
-	// 1. 查询 Redis 中的验证码
-	key := s.getCacheKey(mobile, scene)
-	val, err := s.rdb.Get(ctx, key).Result()
-
-	if err == redis.Nil {
-		return ErrSmsCodeNotFound
-	}
-	if err != nil {
-		return err
-	}
-
-	// 2. 验证码比对
-	if val != code {
-		return ErrSmsCodeNotFound
-	}
-
-	// 3. 仅验证，不执行任何修改操作
-	return nil
+	_, err := s.readCode(ctx, mobile, scene, code, false)
+	return err
 }
 
-// UseSmsCode 验证并标记为已使用（对齐 Java）
+// UseSmsCode atomically consumes the attempt and fails closed on audit write failure.
 func (s *SmsCodeService) UseSmsCode(ctx context.Context, mobile string, scene int32, code string, usedIp string) error {
-	// 1. 先验证有效性
-	if err := s.ValidateSmsCode(ctx, mobile, scene, code); err != nil {
-		return err
-	}
-
-	// 2. 从 Redis 删除（一次性使用）
-	key := s.getCacheKey(mobile, scene)
-	s.rdb.Del(ctx, key)
-
-	// 3. 更新数据库中的最后一条记录为已使用（对齐 Java）
-	lastCode, err := s.getLastSmsCode(ctx, mobile, scene)
+	id, err := s.readCode(ctx, mobile, scene, code, true)
 	if err != nil {
 		return err
 	}
-
-	now := time.Now()
-	_, updateErr := s.q.SystemSmsCode.WithContext(ctx).
-		Where(s.q.SystemSmsCode.ID.Eq(lastCode.ID)).
-		Updates(map[string]interface{}{
-			"used":      true,
-			"used_time": now,
-			"used_ip":   usedIp,
-		})
-	if updateErr != nil {
-		zap.L().Error("Failed to mark SMS code as used", zap.Error(updateErr))
-		// 即使数据库更新失败，也不返回错误（Redis 已删除，一次性使用已生效）
+	if s.q == nil {
+		return fmt.Errorf("SMS database unavailable")
 	}
-
+	tenant, _ := pkgContext.TenantID(ctx)
+	l := s.q.SystemSmsCode
+	info, err := l.WithContext(ctx).Where(l.ID.Eq(id), l.TenantID.Eq(tenant), l.Mobile.Eq(mobile), l.Scene.Eq(scene), l.Used.Is(false)).Updates(map[string]any{"used": true, "used_time": time.Now(), "used_ip": usedIp})
+	if err != nil {
+		return err
+	}
+	if info.RowsAffected != 1 {
+		return ErrSmsCodeNotFound
+	}
 	return nil
 }
 
-// ========== 私有辅助方法 ==========
-
-// getCacheKey 获取 Redis 缓存 key
-func (s *SmsCodeService) getCacheKey(mobile string, scene int32) string {
-	return fmt.Sprintf("%s%s:%d", SmsCodeCacheKeyPrefix, mobile, scene)
+func (s *SmsCodeService) readCode(ctx context.Context, mobile string, scene int32, code string, consume bool) (int64, error) {
+	key, err := s.getCacheKey(ctx, mobile, scene)
+	if err != nil {
+		return 0, err
+	}
+	if s.rdb == nil {
+		return 0, fmt.Errorf("SMS cache unavailable")
+	}
+	if len(code) != 6 || strings.IndexFunc(code, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return 0, ErrSmsCodeNotFound
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	var val string
+	if consume {
+		val, err = s.rdb.WithTimeout(time.Second).GetDel(ctx, key).Result()
+	} else {
+		val, err = s.rdb.WithTimeout(time.Second).Get(ctx, key).Result()
+	}
+	if errors.Is(err, redis.Nil) {
+		return 0, ErrSmsCodeNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	recordID, expected, ok := strings.Cut(val, ":")
+	if !ok || subtle.ConstantTimeCompare([]byte(code), []byte(expected)) != 1 {
+		return 0, ErrSmsCodeNotFound
+	}
+	id, err := strconv.ParseInt(recordID, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, ErrSmsCodeNotFound
+	}
+	return id, nil
 }
 
-// getLastSmsCode 获取最后一条短信验证码记录（数据库查询）
-func (s *SmsCodeService) getLastSmsCode(ctx context.Context, mobile string, scene int32) (*model.SystemSmsCode, error) {
-	l := s.q.SystemSmsCode
-	return l.WithContext(ctx).
-		Where(l.Mobile.Eq(mobile), l.Scene.Eq(scene)).
-		Order(l.ID.Desc()).
-		First()
-}
-
-// isToday 判断时间是否是今天
-func isToday(t time.Time) bool {
-	now := time.Now()
-	return t.Year() == now.Year() &&
-		t.Month() == now.Month() &&
-		t.Day() == now.Day()
+func (s *SmsCodeService) getCacheKey(ctx context.Context, mobile string, scene int32) (string, error) {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return "", fmt.Errorf("trusted tenant required")
+	}
+	if GetSceneEnum(scene) == nil {
+		return "", ErrSmsSceneInvalid
+	}
+	if len(mobile) != 11 || strings.IndexFunc(mobile, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return "", fmt.Errorf("invalid mobile")
+	}
+	return fmt.Sprintf("%s{%d:%s}:%d", SmsCodeCacheKeyPrefix, tenant, mobile, scene), nil
 }

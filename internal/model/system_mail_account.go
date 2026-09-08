@@ -8,9 +8,9 @@ type SystemMailAccount struct {
 	Password       string  `gorm:"column:password;not null;comment:密码" json:"password"`
 	Host           string  `gorm:"column:host;not null;comment:SMTP服务器域名" json:"host"`
 	Port           int     `gorm:"column:port;not null;comment:SMTP服务器端口" json:"port"`
-	SslEnable      BitBool `gorm:"column:ssl_enable;not null;default:0;comment:是否开启SSL" json:"sslEnable"`
-	StarttlsEnable BitBool `gorm:"column:starttls_enable;not null;default:0;comment:是否开启STARTTLS" json:"starttlsEnable"`
-	BaseDO
+	SslEnable      BitBool `gorm:"column:ssl_enable;not null;default:(0);comment:是否开启SSL" json:"sslEnable"`
+	StarttlsEnable BitBool `gorm:"column:starttls_enable;not null;default:(0);comment:是否开启STARTTLS" json:"starttlsEnable"`
+	TenantBaseDO
 }
 
 func (SystemMailAccount) TableName() string {

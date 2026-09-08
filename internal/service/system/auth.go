@@ -7,6 +7,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/system"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/cache"
 	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/utils"
@@ -194,8 +195,16 @@ func (s *AuthService) GetPermissionInfo(ctx context.Context) (*system.AuthPermis
 
 // Login 登录业务
 func (s *AuthService) Login(ctx context.Context, req *system.AuthLoginReq) (*system.AuthLoginResp, error) {
+	if req.CaptchaVerification != "" {
+		if err := NewCaptchaService(cache.RDB).ConsumeVerification(ctx, req.CaptchaVerification); err != nil {
+			return nil, err
+		}
+	}
 	// 0. 解析租户
-	var tenantId int64 = 1 // 默认租户ID
+	tenantId, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return nil, errors.NewBizError(403, "可信租户缺失")
+	}
 	if req.TenantName != "" {
 		tenantRepo := s.repo.SystemTenant
 		tenant, err := tenantRepo.WithContext(ctx).Where(tenantRepo.Name.Eq(req.TenantName)).First()
@@ -205,7 +214,9 @@ func (s *AuthService) Login(ctx context.Context, req *system.AuthLoginReq) (*sys
 		if tenant.Status != consts.CommonStatusEnable {
 			return nil, errors.NewBizError(1002000004, "租户已被禁用")
 		}
-		tenantId = tenant.ID
+		if tenant.ID != tenantId {
+			return nil, errors.NewBizError(403, "租户不匹配")
+		}
 	}
 
 	// 1. 查询用户
@@ -276,12 +287,13 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 // RefreshToken 刷新令牌
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*system.AuthLoginResp, error) {
 	// 1. 验证 refreshToken（从 Redis 获取原令牌信息）
-	oldToken, err := s.tokenSvc.GetAccessToken(ctx, refreshToken)
+	oldToken, err := s.tokenSvc.GetRefreshToken(ctx, refreshToken, consts.UserTypeAdmin)
 	if err != nil || oldToken == nil {
 		return nil, errors.NewBizError(1002000005, "刷新令牌无效或已过期")
 	}
 
 	// 2. 获取用户信息
+	ctx = pkgContext.WithTenant(ctx, oldToken.TenantID)
 	userRepo := s.repo.SystemUser
 	user, err := userRepo.WithContext(ctx).Where(userRepo.ID.Eq(oldToken.UserID)).First()
 	if err != nil {
@@ -299,7 +311,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*s
 	}
 
 	// 5. 创建新的访问令牌
-	tokenDO, err := s.tokenSvc.CreateAccessToken(ctx, user.ID, oldToken.UserType, oldToken.TenantID, userInfo)
+	tokenDO, err := s.tokenSvc.RefreshAccessToken(ctx, refreshToken, user.ID, consts.UserTypeAdmin, user.TenantID, userInfo)
 	if err != nil {
 		return nil, errors.ErrUnknown
 	}
@@ -316,7 +328,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*s
 // SmsLogin 短信登录
 func (s *AuthService) SmsLogin(ctx context.Context, req *system.AuthSmsLoginReq) (*system.AuthLoginResp, error) {
 	// 1. 验证短信验证码 (场景: 登录)
-	if err := s.smsCodeSvc.ValidateSmsCode(ctx, req.Mobile, consts.SmsSceneAdminMemberLogin, req.Code); err != nil {
+	if err := s.smsCodeSvc.UseSmsCode(ctx, req.Mobile, consts.SmsSceneAdminMemberLogin, req.Code, ""); err != nil {
 		return nil, err
 	}
 
@@ -390,8 +402,11 @@ func (s *AuthService) Register(ctx context.Context, r *system.AuthRegisterReq) (
 
 // ResetPassword 重置密码
 func (s *AuthService) ResetPassword(ctx context.Context, req *system.AuthResetPasswordReq) error {
+	if err := validateAdminPassword(req.Password); err != nil {
+		return err
+	}
 	// 1. 验证短信验证码 (场景: 重置密码)
-	if err := s.smsCodeSvc.ValidateSmsCode(ctx, req.Mobile, consts.SmsSceneAdminResetPassword, req.Code); err != nil {
+	if err := s.smsCodeSvc.UseSmsCode(ctx, req.Mobile, consts.SmsSceneAdminResetPassword, req.Code, ""); err != nil {
 		return err
 	}
 
@@ -402,6 +417,9 @@ func (s *AuthService) ResetPassword(ctx context.Context, req *system.AuthResetPa
 		return errors.NewBizError(1002000002, "用户不存在")
 	}
 
+	if err := rejectReservedUser(ctx, s.repo, user.ID); err != nil {
+		return err
+	}
 	// 3. 更新密码
 	hashedPassword, err := utils.HashPassword(req.Password)
 	if err != nil {

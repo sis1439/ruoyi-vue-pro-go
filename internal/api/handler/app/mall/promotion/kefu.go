@@ -27,7 +27,7 @@ func (h *AppKefuHandler) GetMessageList(c *gin.Context) {
 		return
 	}
 	// 获取当前登录用户ID (对齐 Java: getLoginUserId())
-	userID := c.GetInt64("userId")
+	userID := c.GetInt64("userID")
 	// 调用会员端消息列表方法 (对齐 Java: getKeFuMessageList(pageReqVO, getLoginUserId()))
 	res, err := h.svc.GetMessageListForMember(c, r, userID)
 	if err != nil {
@@ -45,7 +45,7 @@ func (h *AppKefuHandler) UpdateMessageReadStatus(c *gin.Context) {
 		return
 	}
 	// 获取当前登录用户ID
-	userID := c.GetInt64("userId")
+	userID := c.GetInt64("userID")
 	if err := h.svc.UpdateMessageReadStatus(c, conversationID, userID, 1); err != nil { // SenderType 1 = User
 		response.WriteBizError(c, err)
 		return
@@ -61,7 +61,7 @@ func (h *AppKefuHandler) SendMessage(c *gin.Context) {
 		return
 	}
 	// 获取当前登录用户ID
-	userID := c.GetInt64("userId")                  // 假设中间件注入了 userId
+	userID := c.GetInt64("userID")                  // 假设中间件注入了 userId
 	id, err := h.svc.CreateMessage(c, r, userID, 1) // SenderType 1 = User
 	if err != nil {
 		response.WriteBizError(c, err)

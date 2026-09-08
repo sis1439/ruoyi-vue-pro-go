@@ -44,6 +44,9 @@ func (s *UserService) GetSimpleUserList(ctx context.Context) ([]system.UserSimpl
 
 // CreateUser 创建用户
 func (s *UserService) CreateUser(ctx context.Context, req *system.UserSaveReq) (int64, error) {
+	if err := validateAssignableRoles(ctx, s.q, req.RoleIDs); err != nil {
+		return 0, err
+	}
 	// 1. 校验唯一性
 	if err := s.checkUsernameUnique(ctx, req.Username, 0); err != nil {
 		return 0, err
@@ -60,8 +63,8 @@ func (s *UserService) CreateUser(ctx context.Context, req *system.UserSaveReq) (
 	}
 
 	// 2. 加密密码（空密码时使用默认密码）
-	if req.Password == "" {
-		req.Password = "123456" // 默认密码，对应 Java: system.user.init-password 配置
+	if err := validateAdminPassword(req.Password); err != nil {
+		return 0, err
 	}
 	hashedPwd, err := utils.HashPassword(req.Password)
 	if err != nil {
@@ -125,6 +128,12 @@ func (s *UserService) CreateUser(ctx context.Context, req *system.UserSaveReq) (
 
 // UpdateUser 更新用户
 func (s *UserService) UpdateUser(ctx context.Context, req *system.UserSaveReq) error {
+	if err := validateAssignableRoles(ctx, s.q, req.RoleIDs); err != nil {
+		return err
+	}
+	if err := rejectReservedUser(ctx, s.q, req.ID); err != nil {
+		return err
+	}
 	// 1. 校验存在
 	u := s.q.SystemUser
 	_, err := u.WithContext(ctx).Where(u.ID.Eq(req.ID)).First()
@@ -204,6 +213,9 @@ func (s *UserService) UpdateUser(ctx context.Context, req *system.UserSaveReq) e
 // DeleteUser 删除用户
 // 对应 Java: AdminUserServiceImpl.deleteUser
 func (s *UserService) DeleteUser(ctx context.Context, id int64) error {
+	if err := rejectReservedUser(ctx, s.q, id); err != nil {
+		return err
+	}
 	// 1. 校验用户存在
 	u := s.q.SystemUser
 	user, err := u.WithContext(ctx).Where(u.ID.Eq(id)).First()
@@ -421,6 +433,9 @@ func (s *UserService) GetUserPage(ctx context.Context, req *system.UserPageReq) 
 
 // UpdateUserStatus 修改用户状态
 func (s *UserService) UpdateUserStatus(ctx context.Context, req *system.UserUpdateStatusReq) error {
+	if err := rejectReservedUser(ctx, s.q, req.ID); err != nil {
+		return err
+	}
 	u := s.q.SystemUser
 	_, err := u.WithContext(ctx).Where(u.ID.Eq(req.ID)).Update(u.Status, int32(*req.Status))
 	return err
@@ -428,6 +443,12 @@ func (s *UserService) UpdateUserStatus(ctx context.Context, req *system.UserUpda
 
 // UpdateUserPassword 修改用户密码
 func (s *UserService) UpdateUserPassword(ctx context.Context, req *system.UserUpdatePasswordReq) error {
+	if err := validateAdminPassword(req.Password); err != nil {
+		return err
+	}
+	if err := rejectReservedUser(ctx, s.q, req.ID); err != nil {
+		return err
+	}
 	u := s.q.SystemUser
 	hashedPwd, err := utils.HashPassword(req.Password)
 	if err != nil {
@@ -439,6 +460,12 @@ func (s *UserService) UpdateUserPassword(ctx context.Context, req *system.UserUp
 
 // ResetUserPassword 重置用户密码
 func (s *UserService) ResetUserPassword(ctx context.Context, req *system.UserResetPasswordReq) error {
+	if err := validateAdminPassword(req.Password); err != nil {
+		return err
+	}
+	if err := rejectReservedUser(ctx, s.q, req.ID); err != nil {
+		return err
+	}
 	u := s.q.SystemUser
 	hashedPwd, err := utils.HashPassword(req.Password)
 	if err != nil {
@@ -589,6 +616,11 @@ func (s *UserService) checkEmailUnique(ctx context.Context, email string, exclud
 
 // DeleteUserList 批量删除用户
 func (s *UserService) DeleteUserList(ctx context.Context, ids []int64) error {
+	for _, id := range ids {
+		if err := rejectReservedUser(ctx, s.q, id); err != nil {
+			return err
+		}
+	}
 	if len(ids) == 0 {
 		return nil
 	}
@@ -596,6 +628,13 @@ func (s *UserService) DeleteUserList(ctx context.Context, ids []int64) error {
 		if err := s.DeleteUser(ctx, id); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateAdminPassword(password string) error {
+	if len(password) < 8 || len(password) > 72 {
+		return errors.New("explicit 8..72-byte password required; no default password is provided")
 	}
 	return nil
 }

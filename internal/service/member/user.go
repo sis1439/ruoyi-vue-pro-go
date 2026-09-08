@@ -3,6 +3,9 @@ package member
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
+	"math"
 	"time"
 
 	member2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
@@ -151,7 +154,7 @@ func (s *MemberUserService) UpdateUserMobile(ctx context.Context, id int64, req 
 	scene := system.SmsSceneMemberUpdateMob.Scene
 
 	// 1. 校验验证码
-	if err := s.smsCodeSvc.ValidateSmsCode(ctx, req.Mobile, int32(scene), req.Code); err != nil {
+	if err := s.smsCodeSvc.UseSmsCode(ctx, req.Mobile, int32(scene), req.Code, ""); err != nil {
 		return err
 	}
 
@@ -173,7 +176,7 @@ func (s *MemberUserService) UpdateUserMobile(ctx context.Context, id int64, req 
 // 对齐 Java: MemberUserServiceImpl.resetUserPassword
 func (s *MemberUserService) ResetUserPassword(ctx context.Context, req *member2.AppMemberUserResetPasswordReq) error {
 	// 1. 校验验证码 (场景: 重置密码 = SmsSceneEnum.MEMBER_RESET_PASSWORD)
-	if err := s.smsCodeSvc.ValidateSmsCode(ctx, req.Mobile, system.SmsSceneMemberResetPwd.Scene, req.Code); err != nil {
+	if err := s.smsCodeSvc.UseSmsCode(ctx, req.Mobile, system.SmsSceneMemberResetPwd.Scene, req.Code, ""); err != nil {
 		return err
 	}
 
@@ -225,7 +228,7 @@ func (s *MemberUserService) UpdateUserPassword(ctx context.Context, id int64, re
 func (s *MemberUserService) GetUserCountByTagId(ctx context.Context, tagId int64) (int64, error) {
 	var count int64
 	err := s.q.MemberUser.WithContext(ctx).UnderlyingDB().
-		Where("FIND_IN_SET(?, tag_ids)", tagId).
+		Where("? = ANY(string_to_array(tag_ids, ','))", fmt.Sprint(tagId)).
 		Count(&count).Error
 	return count, err
 }
@@ -243,8 +246,17 @@ func (s *MemberUserService) UpdateUserPoint(ctx context.Context, id int64, point
 	if point == 0 {
 		return true
 	}
-	u := s.q.MemberUser
-	info, err := u.WithContext(ctx).Where(u.ID.Eq(id)).Update(u.Point, u.Point.Add(int32(point)))
+	if point < -math.MaxInt32 || point > math.MaxInt32 {
+		return false
+	}
+	u := repo.QueryFromContext(ctx, s.q).MemberUser
+	update := u.WithContext(ctx).Where(u.ID.Eq(id))
+	if point < 0 {
+		update = update.Where(u.Point.Gte(int32(-point)))
+	} else {
+		update = update.Where(u.Point.Lte(int32(math.MaxInt32 - point)))
+	}
+	info, err := update.Update(u.Point, u.Point.Add(int32(point)))
 	if err != nil {
 		return false
 	}

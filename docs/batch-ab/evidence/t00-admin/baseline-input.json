@@ -1,0 +1,11 @@
+{
+  "reference_commit": "aab14fb0e74720dd09e964ae066f8bbde9f9012e",
+  "reference_path": "/Users/macmini/Desktop/yudao-mall-uniapp/.work/yudao-ui-admin-vue3-reference",
+  "build_clone": "/Users/macmini/Desktop/yudao-mall-uniapp/.work/admin-build",
+  "node": "25.8.1",
+  "pnpm": "11.19.0",
+  "lock_sha256": "045b4d48e08a94052ff245aaa4ff6aa92dc6b9073b0b0381c176c35eb41c9b23",
+  "lockfile_version": "9.0",
+  "vite": "8.1.4",
+  "vue": "3.5.34"
+}

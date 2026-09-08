@@ -3,6 +3,7 @@ package pay
 import (
 	"context"
 	"fmt"
+	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -38,4 +39,13 @@ func (dao *PayNoRedisDAO) Generate(ctx context.Context, prefix string) (string, 
 
 	// 返回完整序号
 	return fmt.Sprintf("%s%d", noPrefix, no), nil
+}
+
+// AcquireSyncSlot 支付单主动查单的频率闸门，同一支付单在 ttl 内只放行一次
+func (dao *PayNoRedisDAO) AcquireSyncSlot(ctx context.Context, orderID int64, ttl time.Duration) (bool, error) {
+	tenant, ok := pkgcontext.TenantID(ctx)
+	if !ok || dao.rdb == nil {
+		return false, fmt.Errorf("sync gate requires trusted tenant and Redis")
+	}
+	return dao.rdb.SetNX(ctx, fmt.Sprintf("mall:tenant:%d:pay_order:sync:%d", tenant, orderID), "1", ttl).Result()
 }

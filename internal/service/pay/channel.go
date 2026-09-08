@@ -8,6 +8,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/pay/client"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 
 	"gorm.io/gorm"
@@ -66,6 +67,9 @@ func (s *PayChannelService) UpdateChannel(ctx context.Context, req *pay2.PayChan
 		Remark:  req.Remark,
 		Config:  req.Config,
 	})
+	if err == nil {
+		s.clientFactory.RemovePayClient(req.ID) // 配置变更后下次调用重建
+	}
 	return err
 }
 
@@ -77,6 +81,9 @@ func (s *PayChannelService) DeleteChannel(ctx context.Context, id int64) error {
 	}
 	// 2. 删除
 	_, err := s.q.PayChannel.WithContext(ctx).Where(s.q.PayChannel.ID.Eq(id)).Delete()
+	if err == nil {
+		s.clientFactory.RemovePayClient(id)
+	}
 	return err
 }
 
@@ -144,8 +151,39 @@ func (s *PayChannelService) ValidPayChannel(ctx context.Context, id int64) (*pay
 	return channel, nil
 }
 
-// GetPayClient 获得支付客户端
+// GetPayClient 获得支付客户端。缓存未命中时（进程重启、渠道配置变更后）
+// 从数据库重新加载渠道并重建客户端；渠道不存在或已停用一律返回错误，
+// 不回退到任何默认/Mock 实现。
 // 对齐 Java: PayChannelService.getPayClient(Long id)
-func (s *PayChannelService) GetPayClient(channelID int64) client.PayClient {
-	return s.clientFactory.GetPayClient(channelID)
+func (s *PayChannelService) GetPayClient(ctx context.Context, channelID int64) (client.PayClient, error) {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return nil, errors.New("trusted tenant required for payment client")
+	}
+	channel, err := s.ValidPayChannel(ctx, channelID)
+	if err != nil {
+		return nil, err
+	}
+	if channel.TenantID != tenant {
+		return nil, errors.New("payment channel tenant mismatch")
+	}
+	app := s.q.PayApp
+	application, err := app.WithContext(ctx).Where(app.ID.Eq(channel.AppID), app.TenantID.Eq(tenant)).First()
+	if err != nil {
+		return nil, err
+	}
+	if application.Status != 0 {
+		return nil, errors.New("payment application disabled")
+	}
+	if s.clientFactory == nil {
+		return nil, errors.New("payment client factory unavailable")
+	}
+	if channel.Config == nil {
+		return nil, errors.New("payment channel configuration missing")
+	}
+	cached := s.clientFactory.GetPayClient(channelID)
+	if cached != nil {
+		return cached, nil
+	}
+	return s.clientFactory.CreateOrUpdatePayClient(channelID, channel.Code, channel.Config.ToJSON())
 }

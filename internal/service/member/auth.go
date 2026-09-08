@@ -2,6 +2,7 @@ package member
 
 import (
 	"context"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"strings"
 
 	member2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
@@ -78,7 +79,7 @@ func (s *MemberAuthService) Login(ctx context.Context, r *member2.AppAuthLoginRe
 // SmsLogin 手机+验证码登录
 func (s *MemberAuthService) SmsLogin(ctx context.Context, r *member2.AppAuthSmsLoginReq, ip, userAgent string, terminal int32) (*member2.AppAuthLoginResp, error) {
 	// 1. 校验验证码
-	if err := s.smsCodeSvc.ValidateSmsCode(ctx, r.Mobile, 1, r.Code); err != nil { // 1 = SmsSceneMemberLogin
+	if err := s.smsCodeSvc.UseSmsCode(ctx, r.Mobile, 1, r.Code, ip); err != nil { // 1 = SmsSceneMemberLogin
 		return nil, err
 	}
 
@@ -220,12 +221,13 @@ func (s *MemberAuthService) ValidateSmsCode(ctx context.Context, r *member2.AppA
 // RefreshToken 刷新访问令牌
 func (s *MemberAuthService) RefreshToken(ctx context.Context, refreshToken, ip, userAgent string) (*member2.AppAuthLoginResp, error) {
 	// 1. 验证 refreshToken（从 Redis 获取原令牌信息）
-	oldToken, err := s.tokenSvc.GetAccessToken(ctx, refreshToken)
+	oldToken, err := s.tokenSvc.GetRefreshToken(ctx, refreshToken, consts.UserTypeMember)
 	if err != nil || oldToken == nil {
 		return nil, member.ErrAuthUserNotTokenValid
 	}
 
 	// 2. 获取用户信息
+	ctx = pkgContext.WithTenant(ctx, oldToken.TenantID)
 	userRepo := s.repo.MemberUser
 	user, err := userRepo.WithContext(ctx).Where(userRepo.ID.Eq(oldToken.UserID)).First()
 	if err != nil {
@@ -238,7 +240,11 @@ func (s *MemberAuthService) RefreshToken(ctx context.Context, refreshToken, ip, 
 	}
 
 	// 4. 创建新的访问令牌
-	return s.createToken(ctx, user, "")
+	tokenDO, err := s.tokenSvc.RefreshAccessToken(ctx, refreshToken, user.ID, consts.UserTypeMember, user.TenantID, map[string]string{"nickname": user.Nickname})
+	if err != nil {
+		return nil, err
+	}
+	return &member2.AppAuthLoginResp{UserID: user.ID, AccessToken: tokenDO.AccessToken, RefreshToken: tokenDO.RefreshToken, ExpiresTime: tokenDO.ExpiresTime}, nil
 }
 
 // Logout 退出登录
@@ -252,8 +258,8 @@ func (s *MemberAuthService) Logout(ctx context.Context, token, ip, userAgent str
 	}
 
 	// 2. 使用 OAuth2TokenService 删除访问令牌
-	_, _ = s.tokenSvc.RemoveAccessToken(ctx, token)
-	return nil
+	_, err := s.tokenSvc.RemoveAccessToken(ctx, token)
+	return err
 }
 
 // createTokenAfterLoginSuccess 创建令牌并记录登录成功日志
@@ -275,8 +281,8 @@ func (s *MemberAuthService) createToken(ctx context.Context, user *member.Member
 		"nickname": user.Nickname,
 	}
 
-	// 创建访问令牌（UserType=1 表示会员，TenantID=0 表示默认租户）
-	tokenDO, err := s.tokenSvc.CreateAccessToken(ctx, user.ID, consts.UserTypeMember, 0, userInfo)
+	// 令牌绑定数据库中的会员租户
+	tokenDO, err := s.tokenSvc.CreateAccessToken(ctx, user.ID, consts.UserTypeMember, user.TenantID, userInfo)
 	if err != nil {
 		return nil, errors.ErrUnknown
 	}

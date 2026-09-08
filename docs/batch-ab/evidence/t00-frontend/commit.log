@@ -1,0 +1,9 @@
+51dbba93 build: pin reproducible uni-app H5 and WeChat CLI baseline
+ .gitignore                           |    3 +-
+ .node-version                        |    1 +
+ .npmrc                               |    3 +
+ package-lock.json                    | 8349 ++++++++++++++++++++++++++++++++++
+ package.json                         |   40 +-
+ sheep/libs/mplive-manifest-plugin.js |    2 +
+ vite.config.js                       |    2 +-
+ 7 files changed, 8386 insertions(+), 14 deletions(-)

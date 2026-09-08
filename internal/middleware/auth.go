@@ -1,7 +1,11 @@
 package middleware
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
 	"strings"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/cache"
@@ -29,44 +33,57 @@ type OAuth2AccessToken struct {
 
 // Auth Middleware for JWT authentication
 // 使用 JWT + Redis 白名单双重验证机制
-func Auth() gin.HandlerFunc {
+func Auth() gin.HandlerFunc { return authenticate(false) }
+
+func authenticate(optional bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := obtainAuthorization(c)
-		if token == "" {
-			c.AbortWithStatusJSON(401, response.Error(401, "未登录"))
-			return
+		if authenticateIdentity(c, optional) {
+			c.Next()
 		}
-
-		// 1. 先验证 JWT 格式和签名
-		claims, err := utils.ParseToken(token)
-		if err != nil {
-			c.AbortWithStatusJSON(401, response.Error(401, "Token无效"))
-			return
-		}
-
-		// 2. 再检查 Redis 白名单（如果 Redis 可用）
-		if cache.RDB != nil {
-			redisKey := fmt.Sprintf(RedisKeyAccessToken, token)
-			exists, err := cache.RDB.Exists(c.Request.Context(), redisKey).Result()
-			if err == nil && exists == 0 {
-				// Token 不在白名单中（已登出）
-				c.AbortWithStatusJSON(401, response.Error(401, "Token已失效，请重新登录"))
-				return
-			}
-		}
-
-		// 3. 从 JWT Claims 构建 LoginUser（JWT 中已包含完整信息）
-		loginUser := &context.LoginUser{
-			UserID:   claims.UserID,
-			UserType: claims.UserType,
-			TenantID: claims.TenantID,
-			Nickname: claims.Nickname,
-		}
-
-		// 4. Set LoginUser to Context
-		context.SetLoginUser(c, loginUser)
-		c.Next()
 	}
+}
+func authenticateIdentity(c *gin.Context, optional bool) bool {
+	token := obtainAuthorization(c)
+	if token == "" && optional {
+		return true
+	}
+	claims, err := utils.ParseToken(token)
+	if err != nil {
+		c.AbortWithStatusJSON(401, response.Error(401, "Token无效"))
+		return false
+	}
+	expected := 2
+	if strings.HasPrefix(c.Request.URL.Path, "/app-api/") {
+		expected = 1
+	}
+	if claims.UserType != expected {
+		c.AbortWithStatusJSON(403, response.Error(403, "用户类型不匹配"))
+		return false
+	}
+	if tenant := c.GetHeader("tenant-id"); tenant != "" && tenant != strconv.FormatInt(claims.TenantID, 10) {
+		c.AbortWithStatusJSON(403, response.Error(403, "租户不匹配"))
+		return false
+	}
+	if visit := c.GetHeader("visit-tenant-id"); visit != "" && visit != strconv.FormatInt(claims.TenantID, 10) {
+		c.AbortWithStatusJSON(403, response.Error(403, "跨租户访问未授权"))
+		return false
+	}
+	if cache.RDB == nil {
+		c.AbortWithStatusJSON(503, response.Error(503, "认证服务不可用"))
+		return false
+	}
+	data, err := cache.RDB.Get(c.Request.Context(), fmt.Sprintf(RedisKeyAccessToken, token)).Bytes()
+	if err != nil {
+		c.AbortWithStatusJSON(401, response.Error(401, "Token已失效或认证服务不可用"))
+		return false
+	}
+	var stored OAuth2AccessToken
+	if json.Unmarshal(data, &stored) != nil || stored.AccessToken != token || stored.UserID != claims.UserID || stored.UserType != claims.UserType || stored.TenantID != claims.TenantID {
+		c.AbortWithStatusJSON(401, response.Error(401, "Token无效"))
+		return false
+	}
+	context.SetLoginUser(c, &context.LoginUser{UserID: claims.UserID, UserType: claims.UserType, TenantID: claims.TenantID, Nickname: claims.Nickname})
+	return true
 }
 
 // obtainAuthorization 从请求头或参数中获取 Authorization Token
@@ -93,7 +110,20 @@ func obtainAuthorization(c *gin.Context) string {
 	}
 
 	// 3. 最后从 Form Parameter 获取
-	token = c.PostForm("Authorization")
+	// Preserve URL-encoded callback bytes for downstream signature checks.
+	// Do not buffer multipart uploads; ParseMultipartForm may stream them to disk.
+	if strings.EqualFold(c.ContentType(), "application/x-www-form-urlencoded") && c.Request.Body != nil && c.Request.PostForm == nil {
+		original := c.Request.Body
+		var consumed bytes.Buffer
+		c.Request.Body = io.NopCloser(io.TeeReader(original, &consumed))
+		token = c.PostForm("Authorization")
+		c.Request.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(&consumed, original), original}
+	} else {
+		token = c.PostForm("Authorization")
+	}
 	if token != "" {
 		// Remove Bearer prefix if present
 		if len(token) > 7 && strings.ToUpper(token[0:7]) == "BEARER " {
@@ -105,46 +135,5 @@ func obtainAuthorization(c *gin.Context) string {
 	return ""
 }
 
-// OptionalAuth 可选认证中间件
-// 用于公共接口 (@PermitAll)，尝试解析 Token 但不强制要求登录
-// 如果 Token 存在且有效，设置用户信息到上下文；否则继续处理（userId 为 0）
-// 对齐 Java Spring Security 对 @PermitAll 接口的行为
-func OptionalAuth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := obtainAuthorization(c)
-		if token == "" {
-			// Token 不存在，允许继续（未登录状态）
-			c.Next()
-			return
-		}
-
-		// 1. 验证 JWT 格式和签名
-		claims, err := utils.ParseToken(token)
-		if err != nil {
-			// Token 无效，允许继续（视为未登录）
-			c.Next()
-			return
-		}
-
-		// 2. 检查 Redis 白名单（如果 Redis 可用）
-		if cache.RDB != nil {
-			redisKey := fmt.Sprintf(RedisKeyAccessToken, token)
-			exists, err := cache.RDB.Exists(c.Request.Context(), redisKey).Result()
-			if err != nil || exists == 0 {
-				// Token 已失效，允许继续（视为未登录）
-				c.Next()
-				return
-			}
-		}
-
-		// 3. Token 有效，设置用户信息
-		loginUser := &context.LoginUser{
-			UserID:   claims.UserID,
-			UserType: claims.UserType,
-			TenantID: claims.TenantID,
-			Nickname: claims.Nickname,
-		}
-		context.SetLoginUser(c, loginUser)
-		c.Next()
-	}
-}
+// OptionalAuth allows anonymous requests only when no credential was supplied.
+func OptionalAuth() gin.HandlerFunc { return authenticate(true) }

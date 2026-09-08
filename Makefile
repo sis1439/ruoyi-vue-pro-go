@@ -1,4 +1,4 @@
-.PHONY: all build run dev deps wire gen clean help setup
+.PHONY: all build build-linux run dev deps wire gen test verify clean help setup test-integration lint vet ci
 
 APP_NAME = server
 CMD_PATH = cmd/server/main.go
@@ -8,17 +8,17 @@ WIRE_GEN_PATH = cmd/server/wire_gen.go
 all: build
 
 # 编译项目
-build:
+build: gen
 	@echo "Building $(APP_NAME)..."
 	go build -o $(APP_NAME) $(CMD_PATH) $(WIRE_GEN_PATH)
 
 # 直接运行 (如果不使用 wire_gen.go，请确保 wire.go 不被编译排除，但通常 wire.go 有 build tag wireinject)
 
-build-linux:
+build-linux: gen
 	@echo "Building $(APP_NAME)..."
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $(APP_NAME)-linux $(CMD_PATH) $(WIRE_GEN_PATH)
 
-run:
+run: gen
 	@echo "Running $(APP_NAME)..."
 	go run $(CMD_PATH) $(WIRE_GEN_PATH)
 
@@ -33,18 +33,48 @@ dev:
 # 下载依赖
 deps:
 	@echo "Downloading dependencies..."
-	go mod tidy
 	go mod download
+	go mod verify
 
 # 重新生成 wire 依赖注入
 wire:
 	@echo "Regenerating wire..."
-	cd cmd/server && wire
+	cd cmd/server && go run github.com/google/wire/cmd/wire@v0.7.0
 
 # 重新生成 GORM DAO 代码
 gen:
 	@echo "Generating DAO code..."
 	go run cmd/gen/generate.go
+
+test: gen
+	go test ./...
+
+verify: gen
+	go mod verify
+	go build ./...
+	go vet ./...
+	go test ./...
+
+# Real PostgreSQL and Redis acceptance; missing dependencies cannot produce a green run.
+test-integration: gen
+	@test -n "$(TEST_POSTGRES_DSN)" || (echo "TEST_POSTGRES_DSN required"; exit 1)
+	@test -n "$(T09_REDIS_ADDR)" || (echo "T09_REDIS_ADDR required"; exit 1)
+	go test -race -count=1 -json ./... > integration-results.jsonl
+	go run ./scripts/check-integration integration-results.jsonl
+
+vet:
+	go vet ./...
+
+# 静态检查。固定版本，避免 CI 与本地结果漂移
+lint:
+	@if ! command -v golangci-lint > /dev/null; then \
+		echo "Installing golangci-lint v1.64.8..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8; \
+	fi
+	golangci-lint run ./...
+
+# CI 入口：生成代码 -> 编译 -> 静态检查 -> 单元测试
+ci: gen build vet test
 
 # 清理构建产物
 clean:
@@ -61,4 +91,9 @@ help:
 	@echo "  make deps   - Clean and download dependencies"
 	@echo "  make wire   - Regenerate wire dependencies"
 	@echo "  make gen    - Generate GORM DAO code"
+	@echo "  make test   - Generate DAO and run tests"
+	@echo "  make verify - Verify dependencies, build, vet and test"
+	@echo "  make test-integration - Run tests needing PostgreSQL + Redis"
+	@echo "  make lint   - Run golangci-lint"
+	@echo "  make ci     - gen + build + vet + test"
 	@echo "  make clean  - Clean build artifacts"

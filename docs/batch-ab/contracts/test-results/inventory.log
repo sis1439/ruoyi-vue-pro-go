@@ -1,0 +1,15 @@
+COMMAND: rtk proxy python3 -B -m unittest discover -s .work/ruoyi-vue-pro-go/docs/batch-ab/contracts/tests -p test_*.py -v
+test_baseline_after_sale_method_mismatch_and_missing_app_upload (test_inventory.InventoryTests.test_baseline_after_sale_method_mismatch_and_missing_app_upload) ... ok
+test_baseline_bare_prepay_output_has_source_evidence (test_inventory.InventoryTests.test_baseline_bare_prepay_output_has_source_evidence) ... ok
+test_baseline_order_sync_and_null_divergence_is_not_closed (test_inventory.InventoryTests.test_baseline_order_sync_and_null_divergence_is_not_closed) ... ok
+test_dm_admin_is_not_the_yudao_vue_application (test_inventory.InventoryTests.test_dm_admin_is_not_the_yudao_vue_application) ... ok
+test_every_source_locator_and_route_claim_has_pinned_evidence (test_inventory.InventoryTests.test_every_source_locator_and_route_claim_has_pinned_evidence) ... ok
+test_fixed_commits_and_reference_checksums (test_inventory.InventoryTests.test_fixed_commits_and_reference_checksums) ... ok
+test_scope_and_no_invented_acceptance (test_inventory.InventoryTests.test_scope_and_no_invented_acceptance) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 1.571s
+
+OK
+
+EXIT_CODE=0

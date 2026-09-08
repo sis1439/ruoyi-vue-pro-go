@@ -7,6 +7,7 @@ import (
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
@@ -106,7 +107,8 @@ func (s *PayAppService) GetApp(ctx context.Context, id int64) (*pay.PayApp, erro
 
 // GetAppByAppKey 根据 AppKey 获得支付应用
 func (s *PayAppService) GetAppByAppKey(ctx context.Context, appKey string) (*pay.PayApp, error) {
-	return s.q.PayApp.WithContext(ctx).Where(s.q.PayApp.AppKey.Eq(appKey)).First()
+	q := repo.QueryFromContext(ctx, s.q)
+	return q.PayApp.WithContext(ctx).Where(q.PayApp.AppKey.Eq(appKey)).First()
 }
 
 // GetAppMap 获得支付应用 Map

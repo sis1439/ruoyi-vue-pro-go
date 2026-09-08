@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	member2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/member"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
+	"gorm.io/gorm/clause"
 )
 
 type MemberPointRecordService struct {
@@ -105,9 +108,12 @@ func (s *MemberPointRecordService) CreatePointRecord(ctx context.Context, userId
 		return nil
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	if point < math.MinInt32 || point > math.MaxInt32 {
+		return errors.New("积分变动超出范围")
+	}
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 校验用户积分余额
-		user, err := s.memberUserSvc.GetUser(ctx, userId)
+		user, err := tx.MemberUser.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where(tx.MemberUser.ID.Eq(userId)).First()
 		if err != nil {
 			return err
 		}
@@ -117,14 +123,14 @@ func (s *MemberPointRecordService) CreatePointRecord(ctx context.Context, userId
 
 		userPoint := int(user.Point)
 		totalPoint := userPoint + point // 用户变动后的积分
-		if totalPoint < 0 {
+		if totalPoint < 0 || totalPoint > math.MaxInt32 {
 			// 积分不足时记录日志并返回（对应 Java 的 log.error + return）
 			return pkgErrors.NewBizError(1004014003, "用户积分余额不足")
 		}
 
 		// 2. 更新用户积分
 		u := tx.MemberUser
-		info, err := u.WithContext(ctx).Where(u.ID.Eq(userId)).Update(u.Point, u.Point.Add(int32(point)))
+		info, err := u.WithContext(ctx).Where(u.ID.Eq(userId), u.Point.Eq(user.Point)).Update(u.Point, u.Point.Add(int32(point)))
 		if err != nil {
 			return err
 		}

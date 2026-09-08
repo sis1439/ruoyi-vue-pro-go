@@ -1,0 +1,222 @@
+{
+  "reference_commit": "aab14fb0e74720dd09e964ae066f8bbde9f9012e",
+  "official_build_base": "2e001992486e69a464c7ba0b22f110040debe9a2",
+  "isolated_commit": "fbd0e3333f6fac63942b2af44a8e104191b23a73",
+  "all_selected_admin_contract_sources_identical": true,
+  "admin_contract_rows_checked": 148,
+  "unique_admin_contract_files_checked": 26,
+  "api_source_hashes": [
+    {
+      "path": "src/api/infra/file/index.ts",
+      "sha256": "5d0da0f00f2a427d7f93306d3c99c40eb109bc1286d92d2b5f914b20a1c3fdee",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/login/index.ts",
+      "sha256": "c5ec707db94d61299f83e6138c2d8d654b7d9282b7556fd957ad579411987d26",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/login/oauth2/index.ts",
+      "sha256": "5cde8d3ea0c955c5b2bfa620efc41e6bfc0b47032835df36aae06e49051ebc36",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/brand.ts",
+      "sha256": "774e778cd0ad2093e73722d4101a502469997c2ecbfec1de24c675ebfa0c532c",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/category.ts",
+      "sha256": "f24d7e120f86fd4a493ad81da19e090d409a5a77e68e70eef29e8c71cf474d06",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/comment.ts",
+      "sha256": "6be78aae8c6d436f96b4aa2a7fc4563a2aa780cf807696b30187f8aed65d5c02",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/favorite.ts",
+      "sha256": "9fd8848d0b0cd096c1aa4346e7b6eccdaa1038aeac45c4aeceee6a1e482e17a2",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/history.ts",
+      "sha256": "23cefed7d379ff3a5706eb8f281eb6fa419cbedba40d1eaa2caf5a9cf4f26e88",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/property.ts",
+      "sha256": "cafa85cb4cac5c79a4083aa332da6cb6d24cecb11f3ca376d0de24180f72c615",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/product/spu.ts",
+      "sha256": "7bdc41bf0ef97c6211c47b1367509975d2b7645a64b5fb55c6d37f0645380cd0",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/promotion/coupon/coupon.ts",
+      "sha256": "17a563bd264c6f4dc9e274eb4e237fdee067e0e3f2c56a4d3c2423196e42a961",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/promotion/coupon/couponTemplate.ts",
+      "sha256": "3c89d3ec4dd4e49c0936c13950d40e0eff74e786985603bc563c3c13ca688c62",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/trade/afterSale/index.ts",
+      "sha256": "2ffa209ae1319a23a6a0bdfb5074102764c80789098c21376150266ec2bfd963",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/trade/config/index.ts",
+      "sha256": "02b135c0cc9b0e768ef7b48850144f46a2afab52429f12c05c7e88ae32efe14b",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/trade/delivery/express/index.ts",
+      "sha256": "8bc0cd7e7dcf2b00f85f76e7664410dc80754e21576b50c2aa99829902c882b7",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/trade/delivery/expressTemplate/index.ts",
+      "sha256": "f9ca8fb52e4e79a04891a4263be845e0000e6da6d44505e9e7c4642266200a9c",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/trade/delivery/pickUpStore/index.ts",
+      "sha256": "df364a948bdffe87fe5add3a45de65dc9684aa7ab0784cce23bbd2ca32d663da",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/mall/trade/order/index.ts",
+      "sha256": "302ca69c1d0f6d99cdbd997be597356669d240045853ca318db35c29fd51ab3e",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/member/address/index.ts",
+      "sha256": "c58cdfc09b1d7ebff421ddcf9e5411ab596b705b4981a62fa3b789ec02c4500d",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/member/user/index.ts",
+      "sha256": "e7b8ba7d19fc09b48ea12bf7663d47c8d98e71091017ba54118963065ebb64e7",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/pay/app/index.ts",
+      "sha256": "218053a18bbdd1ee910623e125a6cc799701791099f2bc3d9b840117d298ce70",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/pay/channel/index.ts",
+      "sha256": "d99d5575f391ca2cfd3a175e6dc6a985e659605cf12dae2d7b56ca967abcd41f",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/pay/order/index.ts",
+      "sha256": "fcb6770c0580d7ea6bb79d98703f7504909c76a4c46addc8659fe1d380021463",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/system/menu/index.ts",
+      "sha256": "edf3e5b50e5b8ef2b8741e5d19290fb87dfb06fa9413e20775dee938f09e020b",
+      "byte_identical": true
+    },
+    {
+      "path": "src/api/system/permission/index.ts",
+      "sha256": "84e5908b1e0d05fd98c8b26376c0ae3de89cd36b89f09baaa1506bcc59c5320a",
+      "byte_identical": true
+    },
+    {
+      "path": "src/config/axios/service.ts",
+      "sha256": "b195604fb4ea28352ae5730262a202e61fc202602d6e0eab6c485bf17f1d72ee",
+      "byte_identical": true
+    }
+  ],
+  "menu_seed_source": "/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go/migrations/000004_page_menus.up.sql",
+  "menu_seed_sha256": "d8baf663bb87e035cf3243c547cffc07477d3f2e5264f0eeb3c20e5c249e95e9",
+  "six_menu_components": [
+    {
+      "path": "src/views/mall/product/spu/index.vue",
+      "sha256": "ee5b0291c184f019cbfae8ffba640bfbb235d40bedb527788c5d2c3f79037093",
+      "byte_identical": true,
+      "menu_component": "mall/product/spu/index",
+      "present_in_compiled_router": true
+    },
+    {
+      "path": "src/views/member/user/index.vue",
+      "sha256": "eeb107e086e84884a359f0657f35639c62156fa66c7004837bdf882491fa9e24",
+      "byte_identical": true,
+      "menu_component": "member/user/index",
+      "present_in_compiled_router": true
+    },
+    {
+      "path": "src/views/mall/trade/order/index.vue",
+      "sha256": "0d96083d45d2195c7bcf972d3f95dbd791097b3ecd766bfee05e118074f207ba",
+      "byte_identical": true,
+      "menu_component": "mall/trade/order/index",
+      "present_in_compiled_router": true
+    },
+    {
+      "path": "src/views/infra/file/index.vue",
+      "sha256": "33d9ce392b74bc02802ce311f1900d96e7d59f34c45b424c3223f170de737fa5",
+      "byte_identical": true,
+      "menu_component": "infra/file/index",
+      "present_in_compiled_router": true
+    },
+    {
+      "path": "src/views/mall/trade/config/index.vue",
+      "sha256": "1dc89d021bfe958bbded0b466dd962ab1a882f73b0e9c5b9a46b8023c8b6986d",
+      "byte_identical": true,
+      "menu_component": "mall/trade/config/index",
+      "present_in_compiled_router": true
+    },
+    {
+      "path": "src/views/member/config/index.vue",
+      "sha256": "97eb83c3b6c88c6865a44230459e787160a2d7206ae3014047e145f2a467bc88",
+      "byte_identical": true,
+      "menu_component": "member/config/index",
+      "present_in_compiled_router": true
+    }
+  ],
+  "shared_build_and_router_files": [
+    {
+      "path": "src/utils/routerHelper.ts",
+      "sha256": "0c8747848b7f2f5b9f7e5246a10ae7ee1f57234abca770902f56fd4e2980b85b",
+      "byte_identical": true
+    },
+    {
+      "path": "src/router/modules/remaining.ts",
+      "sha256": "01cfc08031d2a9459cd41e52bf34054bcace5ab37b725dc7539b14feedb11b25",
+      "byte_identical": true
+    },
+    {
+      "path": "package.json",
+      "sha256": "e2512b12ded1be9bd20d734779be868e1d064bfa8bc77ac7b7c55191e2ca7fa1",
+      "byte_identical": true
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "045b4d48e08a94052ff245aaa4ff6aa92dc6b9073b0b0381c176c35eb41c9b23",
+      "byte_identical": true
+    }
+  ],
+  "complete_upstream_diff": [
+    "A\t.image/common/pms-feature.png",
+    "A\t.image/common/pms-preview.png",
+    "M\tREADME.md",
+    "A\tsrc/api/oa/attendance/index.ts",
+    "M\tsrc/utils/dict.ts",
+    "A\tsrc/views/oa/attendance/list/OaAttendanceForm.vue",
+    "A\tsrc/views/oa/attendance/list/index.vue",
+    "A\tsrc/views/oa/attendance/my/index.vue",
+    "A\tsrc/views/oa/attendance/report/OaAttendanceMonthReport.vue",
+    "A\tsrc/views/oa/attendance/report/OaAttendanceWeekReport.vue",
+    "A\tsrc/views/oa/attendance/report/index.vue"
+  ],
+  "interpretation": "Existing selected admin API inventory and six seeded menu component paths remain source-compatible. No need to replace original contract provenance or SQL menu paths. This is source equivalence, not HTTP or browser acceptance."
+}

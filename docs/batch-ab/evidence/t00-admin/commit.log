@@ -1,0 +1,3 @@
+fbd0e333 build: record dependency script policy for pinned admin baseline
+ pnpm-workspace.yaml | 5 +++++
+ 1 file changed, 5 insertions(+)

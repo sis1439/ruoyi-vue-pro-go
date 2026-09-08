@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -20,7 +21,23 @@ import (
 var DB *gorm.DB
 
 func InitDB() *gorm.DB {
-	cfg := config.C.MySQL
+	cfg := config.C.Database
+	if cfg.Driver == "" && config.C.MySQL.DSN != "" {
+		cfg.Driver = "mysql"
+		cfg.DSN = config.C.MySQL.DSN
+		cfg.MaxIdle = config.C.MySQL.MaxIdle
+		cfg.MaxOpen = config.C.MySQL.MaxOpen
+		cfg.MaxLifetime = config.C.MySQL.MaxLifetime
+	}
+	var dialector gorm.Dialector
+	switch cfg.Driver {
+	case "postgres":
+		dialector = postgres.Open(cfg.DSN)
+	case "mysql":
+		dialector = mysql.Open(cfg.DSN)
+	default:
+		panic("database.driver must be postgres or mysql")
+	}
 
 	// 自定义 GORM Logger，使用 Zap
 	newLogger := gormlogger.New(
@@ -30,17 +47,21 @@ func InitDB() *gorm.DB {
 			LogLevel:                  gormlogger.Info,
 			IgnoreRecordNotFoundError: true, // 忽略 RecordNotFound 错误日志 (因为我们会手动处理)
 			Colorful:                  true,
+			ParameterizedQueries:      true,
 		},
 	)
 
-	db, err := gorm.Open(mysql.Open(cfg.DSN), &gorm.Config{
+	db, err := gorm.Open(dialector, &gorm.Config{
 		Logger: newLogger,
 	})
 	if err != nil {
 		logger.Log.Fatal("failed to connect database", zap.Error(err))
 	}
 
-	sqlDB, _ := db.DB()
+	sqlDB, err := db.DB()
+	if err != nil {
+		logger.Log.Fatal("failed to obtain database pool", zap.Error(err))
+	}
 	sqlDB.SetMaxIdleConns(cfg.MaxIdle)
 	sqlDB.SetMaxOpenConns(cfg.MaxOpen)
 	sqlDB.SetConnMaxLifetime(time.Duration(cfg.MaxLifetime) * time.Second)
@@ -49,6 +70,9 @@ func InitDB() *gorm.DB {
 		logger.Log.Fatal("failed to register AuditPlugin", zap.Error(err))
 	}
 
+	if err := db.Use(&TenantPlugin{}); err != nil {
+		logger.Log.Fatal("failed to register TenantPlugin", zap.Error(err))
+	}
 	DB = db
 	logger.Info("Database connected successfully")
 	return db
@@ -81,13 +105,7 @@ func (p *AuditPlugin) Initialize(db *gorm.DB) error {
 // beforeCreate 创建前的 Hook，设置 Creator 和 TenantID
 func beforeCreate(db *gorm.DB) {
 	// 1. 从 context 获取 gin.Context
-	ginCtx := extractGinContext(db.Statement.Context)
-	if ginCtx == nil {
-		return // 无 gin.Context，跳过
-	}
-
-	// 2. 获取登录用户信息
-	user := pkgContext.GetLoginUser(ginCtx)
+	user := pkgContext.GetLoginUserFromContext(db.Statement.Context)
 	if user == nil {
 		return // 未登录，跳过
 	}
@@ -108,13 +126,7 @@ func beforeCreate(db *gorm.DB) {
 // beforeUpdate 更新前的 Hook，设置 Updater
 func beforeUpdate(db *gorm.DB) {
 	// 1. 从 context 获取 gin.Context
-	ginCtx := extractGinContext(db.Statement.Context)
-	if ginCtx == nil {
-		return // 无 gin.Context，跳过
-	}
-
-	// 2. 获取登录用户信息
-	user := pkgContext.GetLoginUser(ginCtx)
+	user := pkgContext.GetLoginUserFromContext(db.Statement.Context)
 	if user == nil {
 		return // 未登录，跳过
 	}

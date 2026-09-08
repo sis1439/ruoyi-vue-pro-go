@@ -15,7 +15,7 @@ type SystemNotifyMessage struct {
 	TemplateContent  string     `gorm:"column:template_content;not null;comment:模版内容" json:"templateContent"`
 	TemplateType     int        `gorm:"column:template_type;not null;comment:模版类型" json:"templateType"`
 	TemplateParams   string     `gorm:"column:template_params;not null;comment:模版参数" json:"templateParams"` // JSON map
-	ReadStatus       BitBool    `gorm:"column:read_status;not null;default:0;comment:是否已读" json:"readStatus"`
+	ReadStatus       BitBool    `gorm:"column:read_status;not null;default:(0);comment:是否已读" json:"readStatus"`
 	ReadTime         *time.Time `gorm:"column:read_time;comment:阅读时间" json:"readTime"`
 	TenantBaseDO
 }

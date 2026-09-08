@@ -2,12 +2,15 @@ package system
 
 import (
 	"context"
+	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/system"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
+	"go.uber.org/zap"
 )
 
 type LoginLogService struct {
@@ -70,35 +73,41 @@ func (s *LoginLogService) GetLoginLogPage(ctx context.Context, r *system.LoginLo
 
 // CreateLoginLog 记录登录日志
 func (s *LoginLogService) CreateLoginLog(ctx context.Context, userId int64, userType int, username, ip, userAgent string, logType int, result int) {
-	// 异步记录，避免阻塞
-	go func() {
-		// Mock traceId for now or extract from ctx if available
-		log := &model.SystemLoginLog{
-			LogType:   logType,
-			TraceID:   "", // TODO: Extract traceId from context
-			UserID:    userId,
-			UserType:  userType,
-			Username:  username,
-			Result:    result,
-			UserIP:    ip,
-			UserAgent: userAgent,
-		}
-		_ = s.q.SystemLoginLog.WithContext(context.Background()).Create(log)
-	}()
+	s.writeLog(ctx, &model.SystemLoginLog{
+		LogType:   logType,
+		TraceID:   "", // TODO: Extract traceId from context
+		UserID:    userId,
+		UserType:  userType,
+		Username:  username,
+		Result:    result,
+		UserIP:    ip,
+		UserAgent: userAgent,
+	})
 }
 
 // CreateLogoutLog 记录登出日志
 func (s *LoginLogService) CreateLogoutLog(ctx context.Context, userId int64, userType int, username, ip, userAgent string) {
-	go func() {
-		log := &model.SystemLoginLog{
-			LogType:   consts.LogoutLogTypeSelf,
-			UserID:    userId,
-			UserType:  userType,
-			Username:  username,
-			UserIP:    ip,
-			UserAgent: userAgent,
-			Result:    consts.LoginResultSuccess,
-		}
-		_ = s.q.SystemLoginLog.WithContext(context.Background()).Create(log)
-	}()
+	s.writeLog(ctx, &model.SystemLoginLog{
+		LogType:   consts.LogoutLogTypeSelf,
+		UserID:    userId,
+		UserType:  userType,
+		Username:  username,
+		UserIP:    ip,
+		UserAgent: userAgent,
+		Result:    consts.LoginResultSuccess,
+	})
+}
+
+func (s *LoginLogService) writeLog(ctx context.Context, event *model.SystemLoginLog) {
+	tenant, ok := pkgcontext.TenantID(ctx)
+	if !ok {
+		zap.L().Error("Refusing authentication audit without trusted tenant", zap.Int64("userId", event.UserID))
+		return
+	}
+	// A short synchronous write preserves audit ordering and never retains gin.Context.
+	auditCtx, cancel := context.WithTimeout(pkgcontext.WithTenant(context.Background(), tenant), 2*time.Second)
+	defer cancel()
+	if err := s.q.SystemLoginLog.WithContext(auditCtx).Create(event); err != nil {
+		zap.L().Error("Failed to persist authentication audit", zap.Int64("tenantId", tenant), zap.Int64("userId", event.UserID), zap.Error(err))
+	}
 }

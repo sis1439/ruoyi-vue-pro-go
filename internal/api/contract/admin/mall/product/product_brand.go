@@ -6,7 +6,7 @@ import "time"
 type ProductBrandCreateReq struct {
 	Name        string `json:"name" binding:"required"`
 	PicURL      string `json:"picUrl" binding:"required"`
-	Sort        int    `json:"sort" binding:"required,min=0"`
+	Sort        *int   `json:"sort" binding:"required,min=0"`
 	Description string `json:"description"`
 	Status      int    `json:"status" binding:"oneof=0 1"` // 0: 开启, 1: 关闭
 }
@@ -16,7 +16,7 @@ type ProductBrandUpdateReq struct {
 	ID          int64  `json:"id" binding:"required"`
 	Name        string `json:"name" binding:"required"`
 	PicURL      string `json:"picUrl" binding:"required"`
-	Sort        int    `json:"sort" binding:"required,min=0"`
+	Sort        *int   `json:"sort" binding:"required,min=0"`
 	Description string `json:"description"`
 	Status      int    `json:"status" binding:"oneof=0 1"`
 }

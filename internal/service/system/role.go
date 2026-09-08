@@ -25,6 +25,9 @@ func NewRoleService(q *query.Query) *RoleService {
 
 // CreateRole 创建角色
 func (s *RoleService) CreateRole(ctx context.Context, req *system.RoleSaveReq) (int64, error) {
+	if reservedRole(req.Code) {
+		return 0, errors.New("reserved role requires offline provisioning")
+	}
 	if err := s.checkDuplicate(ctx, req.Name, req.Code, 0); err != nil {
 		return 0, err
 	}
@@ -46,10 +49,16 @@ func (s *RoleService) CreateRole(ctx context.Context, req *system.RoleSaveReq) (
 
 // UpdateRole 更新角色
 func (s *RoleService) UpdateRole(ctx context.Context, req *system.RoleSaveReq) error {
+	if reservedRole(req.Code) {
+		return errors.New("reserved role cannot be assigned through HTTP")
+	}
 	r := s.q.SystemRole
 	role, err := r.WithContext(ctx).Where(r.ID.Eq(req.ID)).First()
 	if err != nil {
 		return errors.New("角色不存在")
+	}
+	if reservedRole(role.Code) {
+		return errors.New("reserved role requires offline management")
 	}
 	if role.Type == consts.RoleTypeSystem {
 		// Allow updating basic info even for system roles, but maybe restricted in some systems.
@@ -77,6 +86,9 @@ func (s *RoleService) UpdateRoleStatus(ctx context.Context, req *system.RoleUpda
 	if err != nil {
 		return errors.New("角色不存在")
 	}
+	if reservedRole(role.Code) {
+		return errors.New("reserved role requires offline management")
+	}
 	if role.Type == consts.RoleTypeSystem {
 		return errors.New("内置角色不能修改状态")
 	}
@@ -86,12 +98,18 @@ func (s *RoleService) UpdateRoleStatus(ctx context.Context, req *system.RoleUpda
 
 // UpdateRoleDataScope 更新数据权限
 func (s *RoleService) UpdateRoleDataScope(ctx context.Context, roleId int64, dataScope int, deptIds []int64) error {
+	if dataScope != consts.DataScopeAll || len(deptIds) > 0 {
+		return errors.New("departmental/custom/self data scopes are not enabled; tenant-wide RBAC only")
+	}
 	r := s.q.SystemRole
-	_, err := r.WithContext(ctx).Where(r.ID.Eq(roleId)).First()
+	role, err := r.WithContext(ctx).Where(r.ID.Eq(roleId)).First()
 	if err != nil {
 		return errors.New("角色不存在")
 	}
 
+	if reservedRole(role.Code) {
+		return errors.New("reserved role requires offline management")
+	}
 	_, err = r.WithContext(ctx).Where(r.ID.Eq(roleId)).Updates(&model.SystemRole{
 		DataScope:        int32(dataScope),
 		DataScopeDeptIds: model.Int64ListFromCSV(deptIds), // Handled by serializer:json
@@ -105,6 +123,9 @@ func (s *RoleService) DeleteRole(ctx context.Context, id int64) error {
 	role, err := r.WithContext(ctx).Where(r.ID.Eq(id)).First()
 	if err != nil {
 		return errors.New("角色不存在")
+	}
+	if reservedRole(role.Code) {
+		return errors.New("reserved role requires offline management")
 	}
 	if role.Type == consts.RoleTypeSystem {
 		return errors.New("内置角色不能删除")
@@ -247,7 +268,7 @@ func (s *RoleService) HasAnySuperAdmin(ctx context.Context, roleIds []int64) (bo
 	}
 
 	for _, role := range roles {
-		if role.Code == consts.RoleCodeSuperAdmin {
+		if role.Code == consts.RoleCodeSuperAdmin && role.Status == 0 && role.DataScope == consts.DataScopeAll {
 			return true, nil
 		}
 	}

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
@@ -22,8 +24,8 @@ func init() {
 	client.RegisterCreator("alipay_bar", NewAlipayPayClientAsClient)
 }
 
-func NewAlipayPayClientAsClient(channelID int64, config string) (client.PayClient, error) {
-	return NewAlipayPayClient(channelID, "alipay_unknown", config)
+func NewAlipayPayClientAsClient(channelID int64, channelCode string, config string) (client.PayClient, error) {
+	return NewAlipayPayClient(channelID, channelCode, config)
 }
 
 // AlipayClientConfig 支付宝支付配置
@@ -249,7 +251,12 @@ func (c *AlipayPayClient) tradePay(ctx context.Context, req *client.UnifiedOrder
 	}
 
 	// 条码支付可能是同步成功的
+	price, err := parseAmount(resp.TotalAmount)
+	if err != nil {
+		return nil, err
+	}
 	return &client.OrderResp{
+		Price:          price,
 		Status:         10, // SUCCESS
 		OutTradeNo:     req.OutTradeNo,
 		ChannelOrderNo: resp.TradeNo,
@@ -309,7 +316,12 @@ func (c *AlipayPayClient) GetOrder(ctx context.Context, outTradeNo string) (*cli
 		status = 0
 	}
 
+	price, err := parseAmount(resp.TotalAmount)
+	if err != nil {
+		return nil, err
+	}
 	return &client.OrderResp{
+		Price:          price,
 		Status:         status,
 		OutTradeNo:     resp.OutTradeNo,
 		ChannelOrderNo: resp.TradeNo,
@@ -361,6 +373,9 @@ func (c *AlipayPayClient) ParseOrderNotify(req *client.NotifyData) (*client.Orde
 	}
 	// if !ok { ... } // v3 VerifySign returns only error
 
+	if values.Get("app_id") != c.config.AppID || values.Get("app_id") == "" {
+		return nil, fmt.Errorf("支付宝回调应用不匹配")
+	}
 	// 3. 构建返回
 	tradeStatus := values.Get("trade_status")
 	status := consts.PayOrderStatusWaiting
@@ -376,7 +391,12 @@ func (c *AlipayPayClient) ParseOrderNotify(req *client.NotifyData) (*client.Orde
 		successTime, _ = time.Parse("2006-01-02 15:04:05", tStr)
 	}
 
+	price, err := parseAmount(values.Get("total_amount"))
+	if err != nil {
+		return nil, err
+	}
 	return &client.OrderResp{
+		Price:          price,
 		Status:         status,
 		OutTradeNo:     values.Get("out_trade_no"),
 		ChannelOrderNo: values.Get("trade_no"),
@@ -394,38 +414,12 @@ func (c *AlipayPayClient) ParseRefundNotify(req *client.NotifyData) (*client.Ref
 }
 
 func (c *AlipayPayClient) UnifiedTransfer(ctx context.Context, req *client.UnifiedTransferReq) (*client.TransferResp, error) {
-	// 单笔转账到支付宝账户
-	p := alipay.FundTransUniTransfer{}
-	p.OutBizNo = req.OutTradeNo
-	p.TransAmount = formatAmount(req.Price)
-	p.ProductCode = "TRANS_ACCOUNT_NO_PWD"
-	p.BizScene = "DIRECT_TRANSFER"
-	p.OrderTitle = req.Subject
-
-	/*
-		payee := alipay.PayeeInfo{
-			Identity:     req.ChannelUserID,
-			IdentityType: "ALIPAY_LOGON_ID", // 默认支付宝登录号
-		}
-		// p.PayeeInfo = &payee // 注意 smartwalle SDK 结构体字段
-	*/
-
-	// 简便起见，这里假设 ChannelUserID 就是支付宝账号。实际可能需要更复杂的参数。
-	// SDK 具体参数结构体需要确认。
-	// smartwalle/alipay/v3 的 FundTransUniTransfer 结构体需确认
-
-	// 暂时返回 Mock，待确认转账参数细节
-	fmt.Printf("Alipay Transfer: %s -> %s\n", req.OutTradeNo, req.ChannelUserID)
-	return &client.TransferResp{
-		Status:            10,
-		OutTradeNo:        req.OutTradeNo,
-		ChannelTransferNo: "TODO_REAL_TRANSFER",
-	}, nil
+	return nil, errors.New("支付宝转账尚未实现，不能生成成功结果")
 }
 
 // formatAmount 分转元 string
 func formatAmount(price int) string {
-	return fmt.Sprintf("%.2f", float64(price)/100)
+	return fmt.Sprintf("%d.%02d", price/100, price%100)
 }
 
 // GetTransfer 查询转账订单
@@ -537,4 +531,25 @@ func (c *AlipayPayClient) ParseTransferNotify(req *client.NotifyData) (*client.T
 		ChannelTransferNo: orderId,
 		RawData:           req.Body,
 	}, nil
+}
+
+// parseAmount converts exact decimal yuan to integer fen without rounding.
+func parseAmount(raw string) (int, error) {
+	whole, fraction, dot := strings.Cut(raw, ".")
+	if whole == "" || (dot && (fraction == "" || len(fraction) > 2)) {
+		return 0, fmt.Errorf("invalid channel amount")
+	}
+	for _, c := range whole + fraction {
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid channel amount")
+		}
+	}
+	for len(fraction) < 2 {
+		fraction += "0"
+	}
+	amount, err := strconv.ParseUint(whole+fraction, 10, strconv.IntSize-1)
+	if err != nil || amount == 0 {
+		return 0, fmt.Errorf("invalid channel amount")
+	}
+	return int(amount), nil
 }
