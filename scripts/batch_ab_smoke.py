@@ -4,6 +4,7 @@
 Build server, migrate and bootstrap binaries in tmp/batch-ab first. Requires
 TEST_POSTGRES_DSN (libpq keyword DSN), T09_REDIS_ADDR, psql, and local free port 58091.
 """
+import io
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / "docs/batch-ab/evidence"
@@ -70,7 +73,11 @@ try:
         for binary in ["migrate", "bootstrap"]:
             subprocess.run([str(ROOT / "tmp/batch-ab" / binary)], env=env, cwd=work,
                            check=True, stdout=log, stderr=log)
-        sql("UPDATE system_tenant SET website='localhost' WHERE id=1")
+        sql("UPDATE system_tenant SET website='localhost', contact_name='own-A-contact' WHERE id=1")
+        sql("INSERT INTO system_tenant(id,name,contact_name,contact_mobile,expire_time) VALUES (2,'private-B-tenant','private-B-contact','13900000002','2099-01-01')")
+        # No business handler executes in this smoke: pause seeds and use future schedules only.
+        sql("UPDATE infra_job SET status=2")
+        sql("INSERT INTO infra_job(id,name,status,handler_name,cron_expression,tenant_id) VALUES (90001,'B-job',1,'errorLogCleanJob','0 0 0 1 1 *',2)")
         sql("INSERT INTO member_user(mobile,password,nickname,tenant_id) SELECT '13900000001',password,'smoke member',1 FROM system_users LIMIT 1")
         server = subprocess.Popen([str(ROOT / "tmp/batch-ab/server")], cwd=work, env=env, stdout=log, stderr=log)
         for _ in range(100):
@@ -104,6 +111,44 @@ try:
         permissions = request("GET", "/admin-api/system/auth/get-permission-info", token=token)
         assert "product:spu:query" in permissions["permissions"]
         assert permissions["menus"], "bootstrap must provide menus"
+        assert {"system:tenant:query", "system:tenant:export"} <= set(permissions["permissions"])
+        own_tenant = request("GET", "/admin-api/system/tenant/get?id=1", token=token)
+        assert own_tenant["id"] == 1
+        request("GET", "/admin-api/system/tenant/get?id=2", token=token, expected=403)
+        tenants = request("GET", "/admin-api/system/tenant/page?pageNo=1&pageSize=20", token=token)
+        assert tenants["total"] == 1 and [row["id"] for row in tenants["list"]] == [1]
+        filtered = request("GET", "/admin-api/system/tenant/page?pageNo=1&pageSize=20&name=private-B-tenant", token=token)
+        assert filtered["total"] == 0
+        export_path = "/admin-api/system/tenant/export-excel"
+        export_req = urllib.request.Request("http://localhost:58091" + export_path,
+                                           headers={"Authorization": "Bearer " + token, "tenant-id": "1"})
+        with urllib.request.urlopen(export_req, timeout=10) as response:
+            assert "spreadsheetml" in response.headers["Content-Type"]
+            with zipfile.ZipFile(io.BytesIO(response.read())) as workbook:
+                xml = "\n".join(workbook.read(name).decode() for name in workbook.namelist() if name.endswith(".xml"))
+                assert "own-A-contact" in xml and "private-B-contact" not in xml and "13900000002" not in xml
+                sheet = ET.fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+                ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+                assert len(sheet.findall("s:sheetData/s:row", ns)) == 2, "export must have header plus one own-tenant row"
+        results.append({"method": "GET", "path": export_path, "own_tenant_only": True})
+        job = {"name": "smoke job", "handlerName": "errorLogCleanJob", "cronExpression": "0 0 0 1 1 *", "handlerParam": "initial"}
+        job_id = request("POST", "/admin-api/infra/job/create", job, token)
+        saved_job = request("GET", "/admin-api/infra/job/get?id=" + str(job_id), token=token)
+        assert saved_job["status"] == 1
+        job.update(id=job_id, handlerParam="updated", cronExpression="0 0 12 1 1 *")
+        request("PUT", "/admin-api/infra/job/update", job, token)
+        saved_job = request("GET", "/admin-api/infra/job/get?id=" + str(job_id), token=token)
+        assert saved_job["handlerParam"] == "updated" and saved_job["cronExpression"] == job["cronExpression"]
+        request("DELETE", "/admin-api/infra/job/delete?id=90001", token=token, expected=500)
+        request("PUT", "/admin-api/infra/job/update-status?id=90001&status=2", token=token, expected=500)
+        request("DELETE", "/admin-api/infra/job/delete-list?ids=" + str(job_id) + ",90001", token=token, expected=500)
+        assert request("GET", "/admin-api/infra/job/get?id=" + str(job_id), token=token)["status"] == 1
+        request("PUT", "/admin-api/infra/job/update-status?id=" + str(job_id) + "&status=2", token=token)
+        request("POST", "/admin-api/infra/job/sync", token=token)
+        request("PUT", "/admin-api/infra/job/update-status?id=" + str(job_id) + "&status=1", token=token)
+        request("DELETE", "/admin-api/infra/job/delete?id=" + str(job_id), token=token)
+        request("POST", "/admin-api/infra/job/sync", token=token)
+        sql("DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM infra_job WHERE id=90001 AND tenant_id=2 AND status=1 AND deleted=0) THEN RAISE EXCEPTION 'B job changed'; END IF; END $$")
         page = request("GET", "/admin-api/product/spu/page?pageNo=1&pageSize=10", token=token)
         assert page["total"] == 0
         root_id = request("POST", "/admin-api/product/category/create", {"parentId":0,"name":"smoke root","sort":0,"status":0}, token)

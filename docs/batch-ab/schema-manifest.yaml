@@ -201,10 +201,11 @@
     "internal/service/infra/file_config.go": "767211d8ef36a2409498fbeff775fc6b360a04e4b7f065e210c73b12250c2b4e",
     "internal/service/infra/infra_api_access_log.go": "b472f7fa9b2859b7028e83ab2720057ff7def189eabe30ad67302188904d6c1e",
     "internal/service/infra/infra_api_error_log.go": "f668de52bbc266ca1c93412058aa9fac4cae6f5ca3ad9de2e4f87d762b4506da",
-    "internal/service/infra/infra_job.go": "3f9835b4fe198b2281dbbd93b200e4d144bffe394a9699dbeb00ceed89ce81f4",
+    "internal/service/infra/infra_job.go": "bc2a5da6d4ef894f5f5da12ef46ca3fbc9bfb88c6f4d3cc4d57ada11b67fe3fc",
     "internal/service/infra/infra_job_log.go": "af66400170872aee44e4912367d2c83b19f0cddc7e004a5d86a5afa6b0f0b23f",
-    "internal/service/infra/scheduler.go": "6d0eff379a8e8d52d4b4b6a7f38028604dbd183eb3968c0c5947c4d8ddbb5390",
-    "internal/service/infra/tenant_integration_test.go": "e83ce499219161f740a1764531af542fd8c1de2d217ce61374c5854268f35a0c",
+    "internal/service/infra/job_regression_test.go": "3d00ab53e6eedec8cffe6ca7752a97dbaded6454d81fdd559706bb6f21643174",
+    "internal/service/infra/scheduler.go": "774bf840a579cba55ca36a70f78e66659879b836052fba1bf603f47939c3c240",
+    "internal/service/infra/tenant_integration_test.go": "369af988c948cb8717f7873b0d00eb361d4d8d92fde139246ddd4478a88dde43",
     "internal/service/iot/alert_config_service.go": "249e42563fdd5dd6705514d854e5c7cff4e9906e9929533770df09e97ae81c53",
     "internal/service/iot/alert_record_service.go": "9789c882d616aa93a2e7a4fc7d245b81bfe038543992d93b4bf36eef2f3dcfc7",
     "internal/service/iot/data_rule_service.go": "35dac9f5a4d5fdd094cce0642b96fb0203b77349427a495eb31a45a927bd3797",
@@ -360,7 +361,8 @@
     "internal/service/system/social/client/wechat.go": "555b03f19cd971cbfb85f379a6f42b3e5877ce1e4c4821c1fbc931a7870a1667",
     "internal/service/system/social_client.go": "87d897d4634db08e92fe632dc51f98611f581ef55c15266b40f30be506db2af1",
     "internal/service/system/social_user.go": "e807b5aa47673eba6a323bfafc97657daeeab68d07e4465fc297f13c7a81fcdd",
-    "internal/service/system/tenant.go": "d571c93e27b899830c0dcbabb4ca4089edd56ba725b11e8014ed0934bb3f1601",
+    "internal/service/system/tenant.go": "20fa62d4f1c631d2a6c65084f3ccf11ae9e048fcad03101050f954106047c3dd",
+    "internal/service/system/tenant_management_test.go": "9e112bde1aea5c9c7d9528ef3718dfa8a511b7d75db56e2926233c9c434f04cd",
     "internal/service/system/tenant_package.go": "b28f4164d3837ec7b1a15e60d3e4d3672368e35f3ab1f06ee0b1dea48a497650",
     "internal/service/system/user.go": "dfacb0db8a0a2788c91832decf092af9e25bb81ceb33fe0384a31623be065a3e"
   },
@@ -2139,6 +2141,7 @@
         "internal/schema/models.go",
         "internal/service/infra/infra_job.go",
         "internal/service/infra/infra_job_log.go",
+        "internal/service/infra/job_regression_test.go",
         "internal/service/infra/scheduler.go",
         "internal/service/infra/tenant_integration_test.go"
       ],
@@ -27494,12 +27497,14 @@
         "internal/middleware/tenant.go",
         "internal/middleware/tenant_security_test.go",
         "internal/schema/models.go",
+        "internal/service/infra/job_regression_test.go",
         "internal/service/infra/scheduler.go",
         "internal/service/infra/tenant_integration_test.go",
         "internal/service/system/auth.go",
         "internal/service/system/platform_inspection.go",
         "internal/service/system/platform_inspection_test.go",
         "internal/service/system/tenant.go",
+        "internal/service/system/tenant_management_test.go",
         "internal/service/system/tenant_package.go"
       ],
       "reviewed_index_definitions": [],
@@ -28007,6 +28012,7 @@
         "internal/service/system/reserved_roles.go",
         "internal/service/system/role.go",
         "internal/service/system/tenant.go",
+        "internal/service/system/tenant_management_test.go",
         "internal/service/system/user.go"
       ],
       "reviewed_index_definitions": [
@@ -28351,6 +28357,7 @@
         "internal/service/system/reserved_roles.go",
         "internal/service/system/role.go",
         "internal/service/system/tenant.go",
+        "internal/service/system/tenant_management_test.go",
         "internal/service/system/user.go"
       ],
       "reviewed_index_definitions": [

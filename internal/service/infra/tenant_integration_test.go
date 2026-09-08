@@ -114,15 +114,16 @@ func TestPostgresJobRestoresPersistedTenant(t *testing.T) {
 	}
 	s := &Scheduler{q: query.Use(db), log: zap.NewNop()}
 	probe := &tenantJobProbe{t: t, tenant: 101}
-	ctx, cancel := context.WithCancel(pkgcontext.WithTenant(context.Background(), 102))
-	cancel()
-	job := &model.InfraJob{ID: 91, HandlerName: "tenantProbe", TenantBaseDO: model.TenantBaseDO{TenantID: 101}}
-	s.executeJob(ctx, job, probe)
+	job := &model.InfraJob{ID: 91, Name: "probe", Status: JobStatusNormal, CronExpression: "0 0 0 * * *", HandlerName: "tenantProbe", TenantBaseDO: model.TenantBaseDO{TenantID: 101}}
+	if err := db.WithContext(pkgcontext.WithTenant(context.Background(), 101)).Create(job).Error; err != nil {
+		t.Fatal(err)
+	}
+	s.executeJob(job, probe, true)
 	if probe.calls != 1 {
 		t.Fatalf("expected job executed once, got %d", probe.calls)
 	}
 	job.TenantID = 0
-	s.executeJob(context.Background(), job, probe)
+	s.executeJob(job, probe, true)
 	if probe.calls != 1 {
 		t.Fatal("tenantless job executed")
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	bizErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/utils"
 )
@@ -220,6 +221,10 @@ func (s *TenantService) DeleteTenantList(ctx context.Context, ids []int64) error
 
 // GetTenant 获得租户
 func (s *TenantService) GetTenant(ctx context.Context, id int64) (*system.TenantRespVO, error) {
+	currentTenant, ok := pkgContext.TenantID(ctx)
+	if !ok || currentTenant != id {
+		return nil, bizErrors.NewBizError(403, "无权访问该租户管理资料")
+	}
 	t := s.q.SystemTenant
 	tenant, err := t.WithContext(ctx).Where(t.ID.Eq(id)).First()
 	if err != nil {
@@ -242,8 +247,13 @@ func (s *TenantService) GetTenant(ctx context.Context, id int64) (*system.Tenant
 
 // GetTenantPage 获得租户分页
 func (s *TenantService) GetTenantPage(ctx context.Context, req *system.TenantPageReq) (*pagination.PageResult[*system.TenantRespVO], error) {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return nil, bizErrors.NewBizError(403, "可信租户缺失")
+	}
+
 	t := s.q.SystemTenant
-	qb := t.WithContext(ctx)
+	qb := t.WithContext(ctx).Where(t.ID.Eq(tenant))
 
 	if req.Name != "" {
 		qb = qb.Where(t.Name.Like("%" + req.Name + "%"))
@@ -299,8 +309,13 @@ func (s *TenantService) GetTenantPage(ctx context.Context, req *system.TenantPag
 
 // GetTenantList 获得租户列表 (用于导出)
 func (s *TenantService) GetTenantList(ctx context.Context, req *system.TenantExportReq) ([]*system.TenantRespVO, error) {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return nil, bizErrors.NewBizError(403, "可信租户缺失")
+	}
+
 	t := s.q.SystemTenant
-	qb := t.WithContext(ctx)
+	qb := t.WithContext(ctx).Where(t.ID.Eq(tenant))
 
 	if req.Name != "" {
 		qb = qb.Where(t.Name.Like("%" + req.Name + "%"))
