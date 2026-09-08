@@ -1,4 +1,0 @@
-=== RUN   TestPostgresStatisticsTenantSoftDeleteAndRetry
---- PASS: TestPostgresStatisticsTenantSoftDeleteAndRetry (0.21s)
-PASS
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/repo/product	2.132s

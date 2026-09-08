@@ -1,8 +1,0 @@
---- FAIL: TestLocalStorageCannotEscapeRoot (0.00s)
-    client_test.go:16: read escaped storage root
-    client_test.go:17: delete escaped storage root
-    client_test.go:18: write escaped storage root
-    client_test.go:20: symlink escaped storage root
-FAIL
-FAIL	github.com/wxlbd/ruoyi-mall-go/internal/pkg/file	1.104s
-FAIL

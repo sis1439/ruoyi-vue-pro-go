@@ -1,7 +1,0 @@
---- FAIL: TestSmsCodeTenantReplayAndFailures (0.16s)
-    sms_code_security_test.go:73: audit row contains OTP instead of marker
---- FAIL: TestSmsAuditSecrets (0.15s)
-    sms_log_security_test.go:24: audit leaks 739281
-FAIL
-FAIL	github.com/wxlbd/ruoyi-mall-go/internal/service/system	1.530s
-FAIL

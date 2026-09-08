@@ -1,4 +1,0 @@
-.../esbuild@0.27.3/node_modules/esbuild postinstall$ node install.js
-.../node_modules/@parcel/watcher install$ node scripts/build-from-source.js
-.../node_modules/@parcel/watcher install: Done
-.../esbuild@0.27.3/node_modules/esbuild postinstall: Done

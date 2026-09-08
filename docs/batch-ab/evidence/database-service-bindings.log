@@ -1,5 +1,0 @@
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/infra	1.365s
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/product	2.213s
-?   	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/promotion	[no test files]
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/trade/brokerage	1.445s
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/mall/trade	4.836s

@@ -1,6 +1,0 @@
-=== RUN   TestLoginAuditKeepsTenantAfterRequestEnd
---- PASS: TestLoginAuditKeepsTenantAfterRequestEnd (0.17s)
-=== RUN   TestNotifyTemplateSelectionIsTenantScoped
---- PASS: TestNotifyTemplateSelectionIsTenantScoped (0.16s)
-PASS
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/system	2.681s

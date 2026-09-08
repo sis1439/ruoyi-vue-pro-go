@@ -1,1 +1,0 @@
-PASS: five build-plugin cases: H5 no-op; disabled unchanged no-op; remove enabled plugin; enable plugin; already-enabled no-op.

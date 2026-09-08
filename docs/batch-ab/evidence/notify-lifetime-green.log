@@ -1,4 +1,0 @@
-=== RUN   TestNotifyJobWaitsForTenantWork
---- PASS: TestNotifyJobWaitsForTenantWork (0.19s)
-PASS
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/service/pay	2.060s

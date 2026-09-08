@@ -1,5 +1,0 @@
---- FAIL: TestNotifyJobWaitsForTenantWork (0.16s)
-    notify_lifecycle_test.go:36: job returned before child work completed
-FAIL
-FAIL	github.com/wxlbd/ruoyi-mall-go/internal/service/pay	3.491s
-FAIL

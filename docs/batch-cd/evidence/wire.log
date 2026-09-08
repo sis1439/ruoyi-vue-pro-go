@@ -1,3 +1,0 @@
-Regenerating wire...
-cd cmd/server && go run github.com/google/wire/cmd/wire@v0.7.0
-wire: github.com/wxlbd/ruoyi-mall-go/cmd/server: wrote /Users/macmini/Desktop/ruoyi-vue-pro-go/cmd/server/wire_gen.go

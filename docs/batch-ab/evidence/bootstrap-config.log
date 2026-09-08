@@ -1,6 +1,0 @@
-=== RUN   TestHostnameValidation
---- PASS: TestHostnameValidation (0.00s)
-=== RUN   TestPostgresBootstrapNonDefaultCredentialsAndHost
---- PASS: TestPostgresBootstrapNonDefaultCredentialsAndHost (0.35s)
-PASS
-ok  	github.com/wxlbd/ruoyi-mall-go/cmd/bootstrap	1.482s

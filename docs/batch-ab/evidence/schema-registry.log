@@ -1,4 +1,0 @@
-=== RUN   TestRegistryCoversTableModels
---- PASS: TestRegistryCoversTableModels (0.00s)
-PASS
-ok  	github.com/wxlbd/ruoyi-mall-go/internal/schema	0.161s
