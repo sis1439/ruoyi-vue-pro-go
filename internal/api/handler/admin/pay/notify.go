@@ -89,7 +89,7 @@ func (h *PayNotifyHandler) NotifyOrder(c *gin.Context) {
 	}
 
 	h.logger.Info("[NotifyOrder] 支付回调处理成功", zap.Int64("channelId", channelId))
-	response.WriteSuccess(c, "success")
+	c.String(200, "success")
 }
 
 // NotifyRefund 支付渠道的统一【退款】回调

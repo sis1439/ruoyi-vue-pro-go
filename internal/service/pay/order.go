@@ -176,15 +176,16 @@ func (s *PayOrderService) SubmitOrder(ctx context.Context, reqVO *pay2.PayOrderS
 
 	// Call UnifiedOrder (对齐 Java: 使用渠道特定的回调 URL)
 	unifiedReq := &client.UnifiedOrderReq{
-		UserIP:      userIP,
-		OutTradeNo:  no,
-		Subject:     order.Subject,
-		Body:        order.Body,
-		NotifyURL:   s.genChannelOrderNotifyUrl(channel), // 对齐 Java: 渠道回调 URL
-		ReturnURL:   reqVO.ReturnUrl,
-		Price:       order.Price,
-		ExpireTime:  order.ExpireTime,
-		DisplayMode: reqVO.DisplayMode,
+		UserIP:        userIP,
+		OutTradeNo:    no,
+		Subject:       order.Subject,
+		Body:          order.Body,
+		NotifyURL:     s.genChannelOrderNotifyUrl(channel), // 对齐 Java: 渠道回调 URL
+		ReturnURL:     reqVO.ReturnUrl,
+		Price:         order.Price,
+		ExpireTime:    order.ExpireTime,
+		DisplayMode:   reqVO.DisplayMode,
+		ChannelExtras: reqVO.ChannelExtras, // JSAPI 依赖其中的 openid
 	}
 	unifiedResp, err := payClient.UnifiedOrder(ctx, unifiedReq)
 	if err != nil {
@@ -369,6 +370,19 @@ func (s *PayOrderService) ExpireOrder(ctx context.Context) (int64, error) {
 	return expiredCount, err
 }
 
+// syncOrderInterval 单个支付单主动查单的最小间隔
+const syncOrderInterval = 3 * time.Second
+
+// SyncOrderQuietlyThrottled 带频率闸门的主动查单，供 App 端 /pay/order/get?sync=true 使用，
+// 避免前端轮询把渠道查单接口打爆。Redis 不可用时不放行。
+func (s *PayOrderService) SyncOrderQuietlyThrottled(ctx context.Context, id int64) {
+	ok, err := s.noDAO.AcquireSyncSlot(ctx, id, syncOrderInterval)
+	if err != nil || !ok {
+		return
+	}
+	s.SyncOrderQuietly(ctx, id)
+}
+
 // SyncOrderQuietly 同步订单的支付状态 (Quietly)
 // 对齐 Java: PayOrderServiceImpl.syncOrderQuietly
 func (s *PayOrderService) SyncOrderQuietly(ctx context.Context, id int64) {
@@ -524,6 +538,11 @@ func (s *PayOrderService) updateOrderSuccessTx(ctx context.Context, tx *query.Qu
 	// 校验状态，必须是待支付
 	if order.Status != PayOrderStatusWaiting {
 		return false, fmt.Errorf("支付订单状态不是待支付")
+	}
+
+	// 1.1 校验渠道实收金额与支付单金额一致，避免改价回调把订单置为已支付
+	if notify.Price > 0 && notify.Price != order.Price {
+		return false, fmt.Errorf("支付金额不匹配: 渠道 %d, 订单 %d", notify.Price, order.Price)
 	}
 
 	// 2. 更新 PayOrder (使用乐观锁)

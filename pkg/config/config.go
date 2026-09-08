@@ -63,6 +63,13 @@ type MQTTClientConfig struct {
 type AppConfig struct {
 	Name string `mapstructure:"name"`
 	Env  string `mapstructure:"env"`
+	// JWTSecret 认证签名密钥。非 local 环境必须显式配置，不得使用内置默认值。
+	JWTSecret string `mapstructure:"jwt_secret"`
+}
+
+// IsProdLike 非本地环境（含 dev/test/staging/prod）适用更严格的配置校验
+func (c AppConfig) IsProdLike() bool {
+	return c.Env != "" && c.Env != "local"
 }
 
 type HTTPConfig struct {
@@ -136,6 +143,11 @@ type PayConfig struct {
 	RefundNotifyURL string `mapstructure:"refund_notify_url"`
 	OrderNoPrefix   string `mapstructure:"order_no_prefix"`
 	WalletPayAppKey string `mapstructure:"wallet_pay_app_key"`
+	// NotifyToken 支付中心 → 商城业务通知的共享令牌。
+	// 商城侧的 /trade/order/update-paid 等回调是公开路由，
+	// 除了重新查询可信支付记录外，再用它建立内部调用的信任边界。
+	// 非 local 环境必须配置。
+	NotifyToken string `mapstructure:"notify_token"`
 }
 
 func Load() error {
@@ -157,6 +169,9 @@ func Load() error {
 	if err := viper.Unmarshal(C); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+	if C.App.Env == "" {
+		C.App.Env = env
+	}
 
 	if value, ok := os.LookupEnv("RUOYI_JWT_SECRET"); ok {
 		C.Security.JWTSecret = value
@@ -167,5 +182,46 @@ func Load() error {
 	if value, ok := os.LookupEnv("RUOYI_DATABASE_DRIVER"); ok {
 		C.Database.Driver = value
 	}
-	return C.Security.Validate()
+	return C.Validate()
+}
+
+// Validate 启动期配置校验。缺少关键配置时给出可操作错误并拒绝启动，
+// 不用默认值假装成功——用默认值启动会在支付回调、认证等路径静默失败。
+func (c *Config) Validate() error {
+	var problems []string
+	if err := c.Security.Validate(); err != nil { problems = append(problems, err.Error()) }
+
+	if c.Database.DSN == "" {
+		problems = append(problems, "database.dsn 未配置：数据库无法连接")
+	}
+	if c.Redis.Addr == "" {
+		problems = append(problems, "redis.addr 未配置：单号生成、通知锁、登录白名单都依赖 Redis")
+	}
+	// 支付回调地址用于拼接渠道回调 URL（pay/order.go genChannelOrderNotifyUrl）。
+	// 留空会让渠道拿到形如 "/3" 的非法地址，支付结果永远回不来。
+	if c.Pay.OrderNotifyURL == "" {
+		problems = append(problems, "pay.order_notify_url 未配置：支付渠道回调地址无法拼接")
+	}
+	if c.Pay.RefundNotifyURL == "" {
+		problems = append(problems, "pay.refund_notify_url 未配置：退款渠道回调地址无法拼接")
+	}
+
+	if c.App.IsProdLike() {
+		if c.Security.JWTSecret == "" {
+			problems = append(problems, "app.jwt_secret 未配置：非 local 环境不允许使用内置默认密钥")
+		}
+		if c.Pay.NotifyToken == "" {
+			problems = append(problems, "pay.notify_token 未配置：支付中心到商城的业务通知缺少信任边界")
+		}
+		for _, u := range []string{c.Pay.OrderNotifyURL, c.Pay.RefundNotifyURL} {
+			if strings.HasPrefix(u, "http://") {
+				problems = append(problems, "支付回调地址必须使用 https: "+u)
+			}
+		}
+	}
+
+	if len(problems) > 0 {
+		return fmt.Errorf("配置校验失败 (env=%s):\n  - %s", c.App.Env, strings.Join(problems, "\n  - "))
+	}
+	return nil
 }

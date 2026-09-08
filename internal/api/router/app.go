@@ -222,7 +222,10 @@ func RegisterAppRoutes(engine *gin.Engine,
 		{
 			orderPublicGroup := tradePublicGroup.Group("/order")
 			{
-				orderPublicGroup.POST("/update-paid", handlers.Mall.Trade.Order.UpdateOrderPaid)
+				// 支付中心 → 商城的业务通知：要求内部调用令牌；
+				// 令牌之外，Handler/Processor 仍会重新查询支付单校验状态、金额与商户订单号
+				orderPublicGroup.POST("/update-paid",
+					middleware.PayNotifyToken(), handlers.Mall.Trade.Order.UpdateOrderPaid)
 				orderPublicGroup.GET("/settlement-product", handlers.Mall.Trade.Order.SettlementProduct) // @PermitAll - 获得商品结算信息
 			}
 		}

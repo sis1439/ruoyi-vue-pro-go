@@ -189,12 +189,11 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 		return nil, fmt.Errorf("支付金额不匹配")
 	}
 
-	// 4.4 校验商户订单号一致
-	if payOrder.MerchantOrderId != order.No {
+	// 4.4 校验商户订单号一致：商户订单号统一为交易主键的十进制字符串
+	if payOrder.MerchantOrderId != strconv.FormatInt(order.ID, 10) {
 		p.logger.Error("支付单商户订单号不匹配",
 			zap.Int64("orderId", order.ID),
-			zap.String("orderNo", order.No),
-			zap.String("payOrderNo", payOrder.MerchantOrderId),
+			zap.String("payOrderMerchantOrderId", payOrder.MerchantOrderId),
 		)
 		return nil, fmt.Errorf("支付单不匹配")
 	}
@@ -210,10 +209,19 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 			"update_time":      now,
 		}
 
-		_, err := tx.TradeOrder.WithContext(ctx).
-			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID)).
+		// 条件状态转换：只有仍处于待支付才允许置为已支付，
+		// 否则并发的取消/重复回调会把已取消订单"复活"成待发货
+		result, err := tx.TradeOrder.WithContext(ctx).
+			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID),
+				tx.TradeOrder.Status.Eq(tradeModel.TradeOrderStatusUnpaid)).
 			Updates(updateData)
-		return err
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("订单状态已变更，支付更新未生效")
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -466,10 +474,19 @@ func (p *CancelOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandl
 			"update_time":   now,
 		}
 
-		_, err := tx.TradeOrder.WithContext(ctx).
-			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID)).
+		// 条件状态转换：仅待支付订单可被取消。
+		// 超时取消任务的查询与更新之间可能已完成支付，无条件更新会造成"已收款却释放库存"
+		result, err := tx.TradeOrder.WithContext(ctx).
+			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID),
+				tx.TradeOrder.Status.Eq(tradeModel.TradeOrderStatusUnpaid)).
 			Updates(updateData)
-		return err
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("订单状态已变更，取消未生效")
+		}
+		return nil
 	})
 
 	if err != nil {

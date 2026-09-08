@@ -22,8 +22,8 @@ func init() {
 	client.RegisterCreator("alipay_bar", NewAlipayPayClientAsClient)
 }
 
-func NewAlipayPayClientAsClient(channelID int64, config string) (client.PayClient, error) {
-	return NewAlipayPayClient(channelID, "alipay_unknown", config)
+func NewAlipayPayClientAsClient(channelID int64, channelCode string, config string) (client.PayClient, error) {
+	return NewAlipayPayClient(channelID, channelCode, config)
 }
 
 // AlipayClientConfig 支付宝支付配置

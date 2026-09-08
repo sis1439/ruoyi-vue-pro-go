@@ -121,8 +121,10 @@ func RegisterTradeRoutes(engine *gin.Engine,
 		brokerageWithdrawGroup.GET("/page", casbinMiddleware.RequirePermission("trade:brokerage-withdraw:query"), handlers.Brokerage.BrokerageWithdraw.GetBrokerageWithdrawPage)
 	}
 
-	// Trade AfterSale Callback (No Auth)
+	// Trade AfterSale Callback：支付中心 → 商城的退款业务通知，
+	// 无用户身份，改由内部调用令牌建立信任边界（服务端仍重新校验退款单）
 	afterSaleCallbackGroup := engine.Group("/admin-api/trade/after-sale")
+	afterSaleCallbackGroup.Use(middleware.PayNotifyToken())
 	{
 		afterSaleCallbackGroup.POST("/update-refunded", handlers.AfterSale.UpdateAfterSaleRefunded)
 	}

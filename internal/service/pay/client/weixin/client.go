@@ -38,8 +38,24 @@ func init() {
 	client.RegisterCreator("wx_bar", NewWxPayClientAsClient)
 }
 
-func NewWxPayClientAsClient(channelID int64, config string) (client.PayClient, error) {
-	return NewWxPayClient(channelID, "wx_unknown", config)
+func NewWxPayClientAsClient(channelID int64, channelCode string, config string) (client.PayClient, error) {
+	return NewWxPayClient(channelID, channelCode, config)
+}
+
+// deref 安全解引用 SDK 返回的字符串指针
+func deref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// expireTime 支付过期时间；零值表示不传，避免下单即过期
+func expireTime(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 type WxPayClient struct {
@@ -111,20 +127,46 @@ func (c *WxPayClient) initV3Client() error {
 	return nil
 }
 
+// 支付方式
+const (
+	methodNative = "native"
+	methodJSAPI  = "jsapi"
+	methodH5     = "h5"
+	methodApp    = "app"
+)
+
+// payMethodOf 渠道编码 → 下单方式。渠道编码以固定版 uni-app 与 Java 契约为准：
+// wx_wap 是浏览器 H5 支付（wx_h5 作为历史别名保留），wx_pub/wx_lite 均走 JSAPI。
+func payMethodOf(channelCode string) (string, bool) {
+	switch channelCode {
+	case "wx_native":
+		return methodNative, true
+	case "wx_pub", "wx_lite":
+		return methodJSAPI, true
+	case "wx_wap", "wx_h5":
+		return methodH5, true
+	case "wx_app":
+		return methodApp, true
+	default:
+		return "", false
+	}
+}
+
 // UnifiedOrder 统一下单
 func (c *WxPayClient) UnifiedOrder(ctx context.Context, req *client.UnifiedOrderReq) (*client.OrderResp, error) {
-	// 根据渠道类型选择支付方式
-	switch c.ChannelCode {
-	case "wx_native":
-		return c.nativeOrder(ctx, req)
-	case "wx_pub", "wx_lite":
-		return c.jsapiOrder(ctx, req)
-	case "wx_h5":
-		return c.h5Order(ctx, req)
-	case "wx_app":
-		return c.appOrder(ctx, req)
-	default:
+	method, ok := payMethodOf(c.ChannelCode)
+	if !ok {
 		return nil, fmt.Errorf("暂不支持的微信支付渠道: %s", c.ChannelCode)
+	}
+	switch method {
+	case methodNative:
+		return c.nativeOrder(ctx, req)
+	case methodJSAPI:
+		return c.jsapiOrder(ctx, req)
+	case methodH5:
+		return c.h5Order(ctx, req)
+	default:
+		return c.appOrder(ctx, req)
 	}
 }
 
@@ -176,12 +218,14 @@ func (c *WxPayClient) jsapiOrder(ctx context.Context, req *client.UnifiedOrderRe
 		return nil, errors.New("JSAPI 支付需要 openid")
 	}
 
-	resp, result, err := svc.Prepay(ctx, jsapi.PrepayRequest{
+	// PrepayWithRequestPayment 由官方 SDK 用商户私钥完成签名，商户私钥不下发前端
+	resp, result, err := svc.PrepayWithRequestPayment(ctx, jsapi.PrepayRequest{
 		Appid:       core.String(c.config.AppID),
 		Mchid:       core.String(c.config.MchID),
 		Description: core.String(req.Subject),
 		OutTradeNo:  core.String(req.OutTradeNo),
 		NotifyUrl:   core.String(req.NotifyURL),
+		TimeExpire:  expireTime(req.ExpireTime),
 		Amount: &jsapi.Amount{
 			Total:    core.Int64(int64(req.Price)),
 			Currency: core.String("CNY"),
@@ -202,11 +246,25 @@ func (c *WxPayClient) jsapiOrder(ctx context.Context, req *client.UnifiedOrderRe
 
 	_ = result
 
+	// 字段名对齐固定版 uni-app：sheep/platform/pay.js 与 sheep/libs/sdk-h5-weixin.js
+	// 均读取 timeStamp / nonceStr / packageValue / signType / paySign
+	content, err := json.Marshal(map[string]string{
+		"appId":        deref(resp.Appid),
+		"timeStamp":    deref(resp.TimeStamp),
+		"nonceStr":     deref(resp.NonceStr),
+		"packageValue": deref(resp.Package),
+		"signType":     deref(resp.SignType),
+		"paySign":      deref(resp.PaySign),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("序列化 JSAPI 支付参数失败: %w", err)
+	}
+
 	return &client.OrderResp{
 		Status:         consts.PayOrderStatusWaiting, // WAITING
 		OutTradeNo:     req.OutTradeNo,
-		DisplayMode:    "app",
-		DisplayContent: *resp.PrepayId,
+		DisplayMode:    client.DisplayModeApp,
+		DisplayContent: string(content),
 	}, nil
 }
 
@@ -266,12 +324,13 @@ func (c *WxPayClient) h5Order(ctx context.Context, req *client.UnifiedOrderReq) 
 func (c *WxPayClient) appOrder(ctx context.Context, req *client.UnifiedOrderReq) (*client.OrderResp, error) {
 	svc := app.AppApiService{Client: c.coreClient}
 
-	resp, result, err := svc.Prepay(ctx, app.PrepayRequest{
+	resp, result, err := svc.PrepayWithRequestPayment(ctx, app.PrepayRequest{
 		Appid:       core.String(c.config.AppID),
 		Mchid:       core.String(c.config.MchID),
 		Description: core.String(req.Subject),
 		OutTradeNo:  core.String(req.OutTradeNo),
 		NotifyUrl:   core.String(req.NotifyURL),
+		TimeExpire:  expireTime(req.ExpireTime),
 		Amount: &app.Amount{
 			Total:    core.Int64(int64(req.Price)),
 			Currency: core.String("CNY"),
@@ -288,11 +347,25 @@ func (c *WxPayClient) appOrder(ctx context.Context, req *client.UnifiedOrderReq)
 	}
 	_ = result
 
+	// App 端 uni.requestPayment 要求全小写键名，见 sheep/platform/pay.js wechatAppPay
+	content, err := json.Marshal(map[string]string{
+		"appid":     c.config.AppID,
+		"partnerid": deref(resp.PartnerId),
+		"prepayid":  deref(resp.PrepayId),
+		"package":   deref(resp.Package),
+		"noncestr":  deref(resp.NonceStr),
+		"timestamp": deref(resp.TimeStamp),
+		"sign":      deref(resp.Sign),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("序列化 App 支付参数失败: %w", err)
+	}
+
 	return &client.OrderResp{
 		Status:         consts.PayOrderStatusWaiting, // WAITING
 		OutTradeNo:     req.OutTradeNo,
-		DisplayMode:    "app",
-		DisplayContent: *resp.PrepayId,
+		DisplayMode:    client.DisplayModeApp,
+		DisplayContent: string(content),
 	}, nil
 }
 
@@ -362,13 +435,19 @@ func (c *WxPayClient) GetOrder(ctx context.Context, outTradeNo string) (*client.
 		status = consts.PayOrderStatusClosed
 	}
 
-	return &client.OrderResp{
+	out := &client.OrderResp{
 		Status:         status,
 		OutTradeNo:     outTradeNo,
-		ChannelOrderNo: *resp.TransactionId,
-		ChannelUserID:  *resp.Payer.Openid,
+		ChannelOrderNo: deref(resp.TransactionId),
 		SuccessTime:    successTime,
-	}, nil
+	}
+	if resp.Payer != nil {
+		out.ChannelUserID = deref(resp.Payer.Openid)
+	}
+	if resp.Amount != nil && resp.Amount.Total != nil {
+		out.Price = int(*resp.Amount.Total)
+	}
+	return out, nil
 }
 
 // GetRefund 查询退款
@@ -416,14 +495,28 @@ func (c *WxPayClient) ParseOrderNotify(req *client.NotifyData) (*client.OrderRes
 		successTime, _ = time.Parse(time.RFC3339, *transaction.SuccessTime)
 	}
 
-	return &client.OrderResp{
+	// 5. 校验商户号与 AppID 归属，避免其它商户的合法回调被当作本渠道结果
+	if mch := deref(transaction.Mchid); mch != "" && mch != c.config.MchID {
+		return nil, fmt.Errorf("回调商户号不匹配: %s", mch)
+	}
+	if appID := deref(transaction.Appid); appID != "" && appID != c.config.AppID {
+		return nil, fmt.Errorf("回调 AppID 不匹配: %s", appID)
+	}
+
+	out := &client.OrderResp{
 		Status:         status,
-		OutTradeNo:     *transaction.OutTradeNo,
-		ChannelOrderNo: *transaction.TransactionId,
-		ChannelUserID:  *transaction.Payer.Openid,
+		OutTradeNo:     deref(transaction.OutTradeNo),
+		ChannelOrderNo: deref(transaction.TransactionId),
 		SuccessTime:    successTime,
 		RawData:        req.Body,
-	}, nil
+	}
+	if transaction.Payer != nil {
+		out.ChannelUserID = deref(transaction.Payer.Openid)
+	}
+	if transaction.Amount != nil && transaction.Amount.Total != nil {
+		out.Price = int(*transaction.Amount.Total)
+	}
+	return out, nil
 }
 
 // ParseRefundNotify 解析退款回调

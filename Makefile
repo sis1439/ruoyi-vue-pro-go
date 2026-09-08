@@ -1,4 +1,4 @@
-.PHONY: all build build-linux run dev deps wire gen test verify clean help
+.PHONY: all build build-linux run dev deps wire gen test verify clean help setup test-integration lint vet ci
 
 APP_NAME = server
 CMD_PATH = cmd/server/main.go
@@ -55,6 +55,26 @@ verify: gen
 	go vet ./...
 	go test ./...
 
+# 集成测试：需要真实 PostgreSQL 与 Redis，通过 build tag 隔离
+# 用法: TEST_PG_DSN=... TEST_REDIS_ADDR=... make test-integration
+test-integration:
+	@echo "Running integration tests (requires PostgreSQL + Redis)..."
+	go test -tags=integration ./... -count=1
+
+vet:
+	go vet ./...
+
+# 静态检查。固定版本，避免 CI 与本地结果漂移
+lint:
+	@if ! command -v golangci-lint > /dev/null; then \
+		echo "Installing golangci-lint v1.64.8..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8; \
+	fi
+	golangci-lint run ./...
+
+# CI 入口：生成代码 -> 编译 -> 静态检查 -> 单元测试
+ci: gen build vet test
+
 # 清理构建产物
 clean:
 	@echo "Cleaning..."
@@ -72,4 +92,8 @@ help:
 	@echo "  make gen    - Generate GORM DAO code"
 	@echo "  make test   - Generate DAO and run tests"
 	@echo "  make verify - Verify dependencies, build, vet and test"
+	@echo "  make test   - Run unit tests"
+	@echo "  make test-integration - Run tests needing PostgreSQL + Redis"
+	@echo "  make lint   - Run golangci-lint"
+	@echo "  make ci     - gen + build + vet + test"
 	@echo "  make clean  - Clean build artifacts"

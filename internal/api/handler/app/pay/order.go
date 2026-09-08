@@ -39,7 +39,7 @@ func (h *AppPayOrderHandler) GetOrder(c *gin.Context) {
 	sync := c.Query("sync") == "true"
 	order, err := h.svc.GetOrder(c, id)
 	if err == nil && order != nil && sync && order.Status == paySvc.PayOrderStatusWaiting {
-		h.svc.SyncOrderQuietly(c, id)
+		h.svc.SyncOrderQuietlyThrottled(c, id)
 		// 重新拉取
 		order, _ = h.svc.GetOrder(c, id)
 	}

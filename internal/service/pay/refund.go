@@ -145,7 +145,10 @@ func (s *PayRefundService) validatePayOrderCanRefund(ctx context.Context, appId 
 		return nil, errors.NewBizError(1006001001, "支付订单状态不对") // PAY_ORDER_STATUS_IS_NOT_SUCCESS
 	}
 
-	// Check Refund Price
+	// Check Refund Price：金额必须为正的整数分，且累计退款不得超过实付
+	if reqDTO.Price <= 0 {
+		return nil, errors.NewBizError(1006010003, "退款金额必须大于 0")
+	}
 	if payOrder.RefundPrice+reqDTO.Price > payOrder.Price {
 		return nil, errors.NewBizError(1006010003, "退款金额超过支付金额") // PAY_REFUND_PRICE_EXCEED
 	}

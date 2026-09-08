@@ -51,3 +51,11 @@ func (dao *TradeNoRedisDAO) GenerateOrderNo(ctx context.Context) (string, error)
 func (dao *TradeNoRedisDAO) GenerateAfterSaleNo(ctx context.Context) (string, error) {
 	return dao.Generate(ctx, "2")
 }
+
+// AcquireSyncSlot 支付状态同步的频率闸门。
+// 同一订单在 ttl 内只允许一次主动查单，避免前端轮询把渠道查单接口打爆。
+// 返回 true 表示本次允许同步。
+func (dao *TradeNoRedisDAO) AcquireSyncSlot(ctx context.Context, orderID int64, ttl time.Duration) (bool, error) {
+	key := fmt.Sprintf("trade_order:sync:%d", orderID)
+	return dao.rdb.SetNX(ctx, key, "1", ttl).Result()
+}

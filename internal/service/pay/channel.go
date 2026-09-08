@@ -67,6 +67,9 @@ func (s *PayChannelService) UpdateChannel(ctx context.Context, req *pay2.PayChan
 		Remark:  req.Remark,
 		Config:  req.Config,
 	})
+	if err == nil {
+		s.clientFactory.RemovePayClient(req.ID) // 配置变更后下次调用重建
+	}
 	return err
 }
 
@@ -78,6 +81,9 @@ func (s *PayChannelService) DeleteChannel(ctx context.Context, id int64) error {
 	}
 	// 2. 删除
 	_, err := s.q.PayChannel.WithContext(ctx).Where(s.q.PayChannel.ID.Eq(id)).Delete()
+	if err == nil {
+		s.clientFactory.RemovePayClient(id)
+	}
 	return err
 }
 
@@ -145,7 +151,9 @@ func (s *PayChannelService) ValidPayChannel(ctx context.Context, id int64) (*pay
 	return channel, nil
 }
 
-// GetPayClient 获得支付客户端
+// GetPayClient 获得支付客户端。缓存未命中时（进程重启、渠道配置变更后）
+// 从数据库重新加载渠道并重建客户端；渠道不存在或已停用一律返回错误，
+// 不回退到任何默认/Mock 实现。
 // 对齐 Java: PayChannelService.getPayClient(Long id)
 func (s *PayChannelService) GetPayClient(ctx context.Context, channelID int64) (client.PayClient, error) {
 	tenant, ok := pkgContext.TenantID(ctx)

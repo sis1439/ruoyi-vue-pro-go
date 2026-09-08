@@ -29,7 +29,7 @@ func TestPaymentClientTenantBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	factory := client.NewPayClientFactory()
-	client.RegisterCreator("security_fixture", func(id int64, cfg string) (client.PayClient, error) { return &securityPayClient{}, nil })
+	client.RegisterCreator("security_fixture", func(id int64, code, cfg string) (client.PayClient, error) { return &securityPayClient{}, nil })
 	svc := NewPayChannelService(query.Use(db), factory)
 	a := pkgContext.WithTenant(context.Background(), 1)
 	b := pkgContext.WithTenant(context.Background(), 2)

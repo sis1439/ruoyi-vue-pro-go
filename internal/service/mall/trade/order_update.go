@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strings"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -900,7 +901,7 @@ func (s *TradeOrderUpdateService) createPayOrderInTx(ctx context.Context, tx *qu
 
 	createReq := &pay.PayOrderCreateReq{
 		AppKey:          payApp.AppKey,
-		MerchantOrderId: order.No,
+		MerchantOrderId: strconv.FormatInt(order.ID, 10), // 商户订单号统一为交易主键，见 docs/decisions.md
 		Subject:         subject,
 		Body:            s.buildPayBody(orderItems),
 		Price:           order.PayPrice,
@@ -1411,6 +1412,11 @@ func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId,
 		if err != nil {
 			return err
 		}
+		// 未更新到行说明订单状态已被并发的支付回调改变，
+		// 此时绝不能继续执行库存/优惠券恢复，否则会出现"已付款却已释放库存"
+		if info.RowsAffected == 0 {
+			return pkgErrors.NewBizError(1004001002, "订单状态已变更，取消未生效")
+		}
 
 		if info.RowsAffected != 1 {
 			return pkgErrors.NewBizError(1004001002, "订单状态已变更")
@@ -1536,17 +1542,13 @@ func (s *TradeOrderUpdateService) CancelPaidOrder(ctx context.Context, userID in
 			}
 
 			// 3. 发起退款
-			// 生成唯一退款单号
-			refundNo, err := s.noDAO.Generate(ctx, "R")
-			if err != nil {
-				s.logger.Error("取消订单失败：生成退款单号失败", zap.Error(err), zap.Int64("orderId", orderID))
-				return err
-			}
-
+			// 退款标识必须与 TradeAfterSaleService.UpdateRefunded 的分派规则一致：
+			// "order-<订单主键>" 表示订单级退款，纯数字表示售后单退款。
+			// 同时它天然唯一，重复取消会被支付侧的 validatePayRefundExist 拒绝。
 			_, err = s.payRefundSvc.CreateRefund(ctx, &pay.PayRefundCreateReq{
 				AppKey:           payApp.AppKey,
-				MerchantOrderId:  order.No,
-				MerchantRefundId: refundNo,
+				MerchantOrderId:  strconv.FormatInt(order.ID, 10),
+				MerchantRefundId: "order-" + strconv.FormatInt(order.ID, 10),
 				Price:            order.PayPrice,
 				Reason:           "订单取消退款",
 				UserIP:           order.UserIP,
@@ -2085,4 +2087,49 @@ func (s *TradeOrderUpdateService) SyncOrderPayStatusQuietly(ctx context.Context,
 			s.logger.Error("静默同步支付状态失败：更新订单支付状态失败", zap.Int64("orderId", orderId), zap.Error(err))
 		}
 	}
+}
+
+// syncPayStatusInterval 单个订单主动查单的最小间隔（get-detail?sync=true / A21）
+const syncPayStatusInterval = 3 * time.Second
+
+// SyncOrderPayStatus 主动同步订单的支付状态，对应 get-detail?sync=true。
+// 前端的"支付成功"回调只用于触发本方法，绝不作为付款凭证：
+// 状态变更一律走 UpdateOrderPaid 这个统一可信入口，由它重新校验支付单状态、金额与归属。
+func (s *TradeOrderUpdateService) SyncOrderPayStatus(ctx context.Context, userID, orderID int64) error {
+	// 1. 归属校验：只能同步自己的订单
+	order, err := s.q.TradeOrder.WithContext(ctx).
+		Where(s.q.TradeOrder.ID.Eq(orderID), s.q.TradeOrder.UserID.Eq(userID)).
+		First()
+	if err != nil {
+		return pkgErrors.NewBizError(1004001001, "订单不存在")
+	}
+	if order.Status != consts.TradeOrderStatusUnpaid || order.PayOrderID == nil || *order.PayOrderID == 0 {
+		return nil // 无需同步
+	}
+
+	// 2. 频率闸门：Redis 不可用时不放行，避免退化成无限制查单
+	ok, err := s.noDAO.AcquireSyncSlot(ctx, orderID, syncPayStatusInterval)
+	if err != nil {
+		s.logger.Warn("获取支付同步闸门失败，跳过本次同步", zap.Int64("orderId", orderID), zap.Error(err))
+		return nil
+	}
+	if !ok {
+		return nil
+	}
+
+	// 3. 向渠道查单。查询失败或结果未知时保持原状态，不得当作"确定未支付"
+	payOrder, err := s.paySvc.ValidateOrderActuallyPaid(ctx, *order.PayOrderID)
+	if err != nil {
+		s.logger.Warn("同步支付状态失败", zap.Int64("orderId", orderID), zap.Error(err))
+		return nil
+	}
+	if payOrder == nil || payOrder.Status != consts.PayOrderStatusSuccess {
+		return nil
+	}
+
+	// 4. 走统一可信入口更新订单；已被回调处理过时它会因状态条件不成立而返回错误，忽略即可
+	if err := s.UpdateOrderPaid(ctx, orderID, *order.PayOrderID); err != nil {
+		s.logger.Info("同步支付状态时订单已由回调更新", zap.Int64("orderId", orderID), zap.Error(err))
+	}
+	return nil
 }
