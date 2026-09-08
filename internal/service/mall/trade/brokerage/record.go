@@ -331,32 +331,16 @@ func (s *BrokerageRecordService) GetUserRankByPrice(ctx context.Context, userId 
 		return 0, err
 	}
 
-	// 使用 Gen 生成的字段和表名
+	// Count grouped users through the tenant-scoped model, without a derived table.
 	br := s.q.BrokerageRecord
-	tableName := br.TableName()
-	userIDCol := br.UserID.ColumnName().String()
-	priceCol := br.Price.ColumnName().String()
-	bizTypeCol := br.BizType.ColumnName().String()
-	statusCol := br.Status.ColumnName().String()
-	createTimeCol := br.CreateTime.ColumnName().String()
-
-	// 2. 获取比用户佣金高的用户数量
-	db := br.WithContext(ctx).UnderlyingDB()
-
-	// 子查询：获取每个用户的佣金总额大于当前用户的数量
-	subQuery := db.Table(tableName).
-		Select(userIDCol+", SUM("+priceCol+") as total_price").
-		Where(bizTypeCol+" = ? AND "+statusCol+" = ?", tradeModel.BrokerageRecordBizTypeOrder, tradeModel.BrokerageRecordStatusSettlement).
-		Where("deleted = 0")
+	ranked := br.WithContext(ctx).Where(br.BizType.Eq(tradeModel.BrokerageRecordBizTypeOrder), br.Status.Eq(tradeModel.BrokerageRecordStatusSettlement))
 	if !beginTime.IsZero() && !endTime.IsZero() {
-		subQuery = subQuery.Where(createTimeCol+" BETWEEN ? AND ?", beginTime, endTime)
+		ranked = ranked.Where(br.CreateTime.Between(beginTime, endTime))
 	}
-	subQuery = subQuery.Group(userIDCol).Having("SUM("+priceCol+") > ?", userPrice)
-
-	var greaterCount int64
-	db.Table("(?) as ranked", subQuery).Count(&greaterCount)
-
-	// 3. 返回排名 (比自己高的人数 + 1)
+	greaterCount, err := ranked.Group(br.UserID).Having(br.Price.Sum().Gt(userPrice)).Count()
+	if err != nil {
+		return 0, err
+	}
 	return int(greaterCount) + 1, nil
 }
 

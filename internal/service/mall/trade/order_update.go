@@ -144,7 +144,7 @@ func (s *TradeOrderUpdateService) UpdatePaidOrderRefunded(ctx context.Context, o
 
 	// 3. 校验退款单状态必须是成功
 	// 对应 Java: 特殊：因为在 cancelPaidOrder 已经进行订单的取消，所以这里必须退款成功！！！
-	if payRefund.Status != 2 { // 2 = PayRefundStatusSuccess
+	if payRefund.Status != consts.PayRefundStatusSuccess {
 		s.logger.Error("退款单状态不是成功",
 			zap.Int64("payRefundId", payRefundId),
 			zap.Int("status", payRefund.Status),

@@ -353,7 +353,7 @@ func RegisterAppRoutes(engine *gin.Engine,
 			// Bargain Help
 			bargainHelpGroup := promotionGroup.Group("/bargain-help")
 			{
-				bargainHelpGroup.GET("/list", handlers.Mall.Promotion.BargainHelp.GetBargainHelpList)
+				bargainHelpGroup.GET("/list", middleware.Auth(), handlers.Mall.Promotion.BargainHelp.GetBargainHelpList)
 				bargainHelpGroup.POST("/create", middleware.Auth(), handlers.Mall.Promotion.BargainHelp.CreateBargainHelp)
 			}
 

@@ -547,7 +547,7 @@ func (s *SeckillActivityService) ValidateJoinSeckill(ctx context.Context, activi
 	}
 
 	// 4. Check Single Limit
-	if act.SingleLimitCount > 0 && count > act.SingleLimitCount {
+	if count > act.SingleLimitCount {
 		return nil, nil, errors.NewBizError(1001002008, "超出单次限购数量")
 	}
 

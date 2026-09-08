@@ -6,14 +6,17 @@ import (
 	"github.com/stretchr/testify/require"
 	dto "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
+	paymodel "github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
 	productmodel "github.com/wxlbd/ruoyi-mall-go/internal/model/product"
 	model "github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	paysvc "github.com/wxlbd/ruoyi-mall-go/internal/service/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/testutil"
 	tenant "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/database"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -125,4 +128,37 @@ func TestJavaOrderDetailDeletedExpressPostgres(t *testing.T) {
 	res := &dto.AppTradeOrderDetailResp{}
 	require.NoError(t, svc.FillAppOrderDetail(ctx, &model.TradeOrder{LogisticsID: express.ID}, res))
 	require.Empty(t, res.LogisticsName)
+}
+
+func TestFrontSuccessfulRefundStatusPostgres(t *testing.T) {
+	db := testutil.PostgreSQL(t)
+	require.NoError(t, db.Use(&database.TenantPlugin{}))
+	ctx := tenant.WithTenant(context.Background(), 1)
+	q := query.Use(db)
+	order := &model.TradeOrder{UserID: 17, PayPrice: 100, Status: consts.TradeOrderStatusDelivered}
+	require.NoError(t, db.WithContext(ctx).Create(order).Error)
+	item := &model.TradeOrderItem{OrderID: order.ID, UserID: 17, AfterSaleStatus: consts.TradeOrderItemAfterSaleStatusApply}
+	require.NoError(t, db.WithContext(ctx).Create(item).Error)
+	as := &model.AfterSale{UserID: 17, OrderID: order.ID, OrderItemID: item.ID, Status: consts.AfterSaleStatusWaitRefund, RefundPrice: 100}
+	require.NoError(t, db.WithContext(ctx).Create(as).Error)
+	refund := &paymodel.PayRefund{No: "front-refund", OrderID: order.ID, Status: consts.PayRefundStatusSuccess, RefundPrice: 100, MerchantOrderId: strconv.FormatInt(order.ID, 10), MerchantRefundId: strconv.FormatInt(as.ID, 10)}
+	require.NoError(t, db.WithContext(ctx).Create(refund).Error)
+	pay := paysvc.NewPayRefundService(q, nil, nil, nil, nil, nil)
+	orders := &TradeOrderUpdateService{q: q, payRefundSvc: pay, logger: zap.NewNop()}
+	svc := &TradeAfterSaleService{q: q, payRefundSvc: pay, orderSvc: orders}
+	// Legacy wrong values must not be accepted as successful refunds.
+	for _, status := range []int{0, 1, 2, 20} {
+		require.NoError(t, db.WithContext(ctx).Model(refund).Update("status", status).Error)
+		require.Error(t, svc.UpdateAfterSaleRefunded(ctx, as.ID, refund.ID))
+		require.Error(t, orders.UpdatePaidOrderRefunded(ctx, order.ID, refund.ID))
+	}
+	require.NoError(t, db.WithContext(ctx).Model(refund).Update("status", 10).Error)
+	for range 2 {
+		require.NoError(t, svc.UpdateAfterSaleRefunded(ctx, as.ID, refund.ID))
+		require.NoError(t, orders.UpdatePaidOrderRefunded(ctx, order.ID, refund.ID))
+	}
+	require.NoError(t, db.WithContext(ctx).First(order, order.ID).Error)
+	require.Equal(t, 100, order.RefundPrice)
+	require.NoError(t, db.WithContext(ctx).First(as, as.ID).Error)
+	require.Equal(t, consts.AfterSaleStatusComplete, as.Status)
 }

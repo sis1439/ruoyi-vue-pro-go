@@ -22,6 +22,8 @@
 | 错误码 / 请求头 / 分页语义 | 错误码数值段比对；请求头与分页参数逐项核对 | 全量 |
 | 业务逻辑 — 价格计算链 + 库存扣减 | 11 个计算器逐个对比算法 | 全量 |
 | 业务逻辑 — 订单/售后状态机、分销结算、活动逻辑、定时任务 | 逐方法对比状态校验、CAS、公式与调度注册 | 全量 |
+| 前端调用约定（补充轮，见文末 F 系列） | 参数序列化、请求头、上传、WebSocket、鉴权边界、字段名全集 | 全量 |
+| Go 内部一致性（补充轮） | context key、同名常量值冲突 | 全量 |
 
 ---
 
@@ -699,3 +701,163 @@ Go 的 `/member/auth/send-sms-code`（`internal/api/router/app.go:42`）注册�
 - `go build ./...`、`go vet ./...`、`git diff --check`：通过。构建输出过本机模块缓存写权限提示，退出状态为 0；本轮使用独立可写 GOCACHE。
 - 新迁移由应用迁移流程顺序执行；尚未应用到业务数据库。000007 的历史主单状态转换仍要求停旧版本写入并确认历史数据来源，不能反复手工运行原始转换 SQL。
 - 未执行真实短信发送、支付 / 转账渠道联调或 uniapp 真机联调。短信新增用例验证真实数据库中的场景、手机号选择与租户归属；拼团用例使用真实数据库验证批次状态及回滚，跨模块取消订单以测试替身注入成功 / 失败，不能替代真实退款渠道验收。
+
+---
+
+## 补充审计：以 uniapp 前端为起点（2026-09-08）
+
+前面所有轮次都以「Java 结构 → Go 结构」为比对方向，发现不了 **Go 内部不一致** 和 **前端调用约定不匹配** 这两类问题。本轮改为从前端实际发出的请求和消费的响应反查，累计记录 F1～F7 七项发现及 F8 一项一致性确认。以下保留发现时的行为；本轮修复与验证结果见文末。
+
+### F1 【P0】`userId` 上下文 key 大小写不匹配，10 个接口拿到 0
+
+`pkg/context/context.go:10` 定义 `CtxUserIDKey = "userID"`，中间件也只以这个 key 写入（全项目仅 4 处 `c.Set`，见 `context.go:63-64`、`middleware/tenant.go:54,120`）。
+
+但有 10 处 handler 用字面量 `c.GetInt64("userId")`（小写 d）取值。gin 的 `c.Keys` 是 `map[string]any`，key 严格区分大小写 —— 实测：
+
+```
+GetInt64("userID") = 17
+GetInt64("userId") = 0   <- handler 用的 key
+```
+
+受影响接口（**全部为前端在用**）：
+
+| 文件 | handler | 路由 | 前端调用 |
+|---|---|---|---|
+| `handler/app/mall/trade/brokerage/user.go:37` | `GetBrokerageUser` | `/trade/brokerage-user/get` | `brokerage.js:15` |
+| 同上 `:70` | `BindBrokerageUser` | `/trade/brokerage-user/bind` | `brokerage.js:7` |
+| 同上 `:81` | `GetBrokerageUserSummary` | `/trade/brokerage-user/get-summary` | `brokerage.js:22` |
+| 同上 `:140` | `GetBrokerageUserChildSummaryPage` | `/trade/brokerage-user/child-summary-page` | `brokerage.js:104` |
+| 同上 `:237` | `GetRankByPrice` | `/trade/brokerage-user/get-rank-by-price` | `brokerage.js:77` |
+| `handler/app/member/social_user.go:31,54,69` | `Bind`/`Unbind`/`Get` | `/member/social-user/bind`、`/unbind`、`/get` | `social.js:20,39,7` |
+| `handler/app/mall/promotion/combination_record.go:74,92` | `GetCombinationRecordPage`/`GetCombinationRecordDetail` | `/promotion/combination-record/page`、`/get-detail` | `combination.js:52,61` |
+
+影响：整个分销中心（我的推广、绑定推广员、佣金统计、下级列表、佣金排名）、微信账号绑定/解绑、拼团记录，全部以 `userId = 0` 查询 —— 查不到数据，或在绑定类接口上写入错误数据。
+
+对照：同目录下另有 53 处使用正确的 `context.GetUserId(c)`，属于局部遗漏而非全局约定问题。
+
+修改：10 处统一改为 `context.GetUserId(c)`。建议同时给 `c.GetInt64("userId")` 加一条 lint 规则或在 `pkg/context` 暴露唯一入口，避免再次写错。
+
+### F2 【P0】WebSocket 客服消息类型字符串不匹配，实时消息收不到
+
+Java `WebSocketMessageTypeConstants`（前端 `pages/chat/util/constants.js` 与之逐字一致）：
+
+```java
+String KEFU_MESSAGE_TYPE = "kefu_message_type";
+String KEFU_MESSAGE_ADMIN_READ = "kefu_message_read_status_change";
+```
+
+Go `internal/service/mall/promotion/kefu.go:150-157,271-274` 发的是 `"KEFU_MESSAGE"` 和 `"KEFU_MESSAGE_ADMIN_READ"` —— 两个都对不上。
+
+前端 `pages/chat/index.vue:174-186` 的处理是：
+
+```js
+const type = data.type;
+if (!type) { console.error('未知的消息类型：' + data); return; }
+if (type === WebSocketMessageTypeConstants.KEFU_MESSAGE_TYPE) { ...刷新消息列表... }
+```
+
+类型对不上时既不刷新也不报错，静默丢弃。影响：客服聊天页收不到实时消息，只能靠用户手动下拉重新拉取 `/promotion/kefu-message/list`。
+
+修改：两个常量字符串改为 Java 的取值。建议提取到 `internal/consts` 与 Java 常量一一对应，不要在 service 里写字面量。
+
+### F3 【P1】`get-rank-by-price` 的 `times` 只认 `times[]` 一种形式
+
+前端三个排行榜接口用了三种不同的序列化方式：
+
+| 接口 | 前端发送 | 前端位置 |
+|---|---|---|
+| `get-rank-by-price` | `times=A&times=B`（重复键） | `brokerage.js:75` |
+| `rank-page-by-user-count` | `times[0]=A&times[1]=B` | `promoter.vue:91-92` |
+| `rank-page-by-price` | `Object.keys` 拼接，数组转 `A,B` | `brokerage.js:83` |
+
+Go 的两个分页接口用 `types.QueryTimeRange(c.Request.URL.Query(), "times")` 兜底了三种形式（`handler/.../brokerage/user.go:152,196`），**但 `GetRankByPrice`（`:229`）用的是 `c.QueryArray("times[]")`**，只匹配 `times[]`。此外，原公共解析器没有处理表中的 `times=A,B` 形式，分页接口同样需要补齐这一形式。
+
+前端 `commission-ranking.vue:105` 发的是重复键形式 → `timesStr` 为空 → 传给 `GetUserRankByPrice` 的 `times` 为 nil，时间范围筛选失效，排名按全时段计算。
+
+修改：改用已有的 `types.QueryTimeRange`，与同文件另两个 handler 保持一致。
+
+### F4 【P2】WebSocket 的 `content` 是对象，Java 是 JSON 字符串
+
+Java `WebSocketSenderApi.sendObject` 统一走 `JsonUtils.toJsonString(messageContent)`，`content` 是**字符串**；前端 `pages/chat/index.vue:183` 相应地做 `jsonParse(data.content)`。
+
+Go `internal/pkg/websocket/message.go:11` 的 `Content interface{}` 直接序列化为 **JSON 对象**（注释明确写「而不是字符串」）。
+
+前端 `sheep/helper/utils.js:304` 的 `jsonParse` 带 try/catch，传对象时 `JSON.parse` 抛错后返回原值 —— 恰好还是那个对象，所以**不会崩，行为正确**，只是控制台留一条 warn。修 F2 后建议一并对齐，避免后续依赖字符串形态的代码踩坑。
+
+### 本轮已核对无问题的
+
+- **文件上传**：前端 `uni.uploadFile` 的 `name: 'file'`、`formData.directory`，与 Go `c.FormFile("file")` + `c.PostForm("directory")` 兜底一致（`handler/admin/infra/file.go:167-177`）
+- **结算参数展开**：前端 `items[0].skuId` 形式，Go 有 `parseOrderItemsFromQuery` 及 `skuIds/counts` 两级兜底
+- **钱包流水、积分记录的 `createTime`**：`QueryTimeRange` 支持重复键、`[]`、`[0]/[1]` 三种形式
+- **请求头**：`Authorization`、`terminal`、`tenant-id`、`Accept` 均有处理
+- **WebSocket 端点**：`/infra/ws` 路径与前端 `.env` 的 `SHOPRO_WEBSOCKET_PATH` 一致
+
+### F5 【P2】鉴权边界差异 3 处
+
+脚本比对 Java 的 `@PermitAll` 标注（65 个公开 / 141 个需登录）与 Go 路由的中间件分配：
+
+| 接口 | Java | Go | 实际影响 |
+|---|---|---|---|
+| `POST /member/social-user/bind` | `@PermitAll` | `middleware.Auth()` | 无。前端只在登录态调用（`pay.js:391` 绑微信付款、`user/info.vue:251` 资料页绑定），H5 授权跳转回来时 token 仍在 localStorage |
+| `POST /member/social-user/wxa-qrcode` | `@PermitAll` | `middleware.Auth()` | 无。前端 `s-share-modal.vue:91` 生成海报前先判 `isLogin`，未登录会弹登录框 |
+| `GET /promotion/bargain-help/list` | 需登录 | 完全公开 | 他人的砍价助力列表可被匿名查看。Go handler 只用 `recordId`、不读 userId，功能正常，属信息暴露 |
+
+前两项 Go 比 Java 严格但前端用法不受影响；第三项建议补 `middleware.Auth()`。
+
+### F6 `PayRefundStatus` 重复定义且值不同（实际引用导致回调失败）
+
+与 P0-1（支付订单状态两处定义）同类，修复时只清理了 `PayOrderStatus`，退款状态的重复定义留了下来：
+
+| 常量 | `internal/consts/pay.go:44-46` | `internal/service/pay/consts.go:21-23` | Java |
+|---|---|---|---|
+| Waiting | 0 | 0 | 0 |
+| Success | **10** | **1** | 10 |
+| Failure | **20** | **2** | 20 |
+
+复核更正：`internal/service/pay/refund.go` 使用 `internal/consts` 的 0/10/20，但另一套 0/1/2 **不是死常量**。`TradeAfterSaleService.UpdateAfterSaleRefunded` 引用了 `pay.PayRefundStatusSuccess`（1），后台退款导出也引用该套常量；另外 `TradeOrderUpdateService.UpdatePaidOrderRefunded` 将成功值硬编码为 2。
+
+因此合法的状态 10 退款会被售后回调拒绝，后台导出也无法正确标记退款成功 / 失败。这是已经生效的行为差异，不能只按未来误用风险处理。
+
+修复：删除 service/pay 中的重复定义，把售后回调、订单退款校验与后台退款导出全部统一为 `internal/consts` 的 0/10/20。支付服务及渠道本来就按这些值持久化，本轮不新增退款状态数据迁移。回归测试拒绝 0/1/2/20，接受 10，并验证重复成功通知只累计一次退款金额。
+
+### 本轮另外核对无问题的
+
+- **微信支付参数**：前端 `pay.js:180-186` 从 `JSON.parse(data.displayContent)` 取 `timeStamp`/`nonceStr`/`packageValue`/`signType`/`paySign`，Go `client/weixin/client.go:253-257` five 个键名逐字一致（`packageValue` 而非 `package`，与 WxJava 一致）
+- **前端消费字段名全集**：提取前端 349 个字段名与 Go 819 个 json tag 比对，差集 116 个逐个核验后全部是前端本地变量、DIY 装修配置或 uni API 返回值。其中 `pointStock`/`pointTotalStock`/`activityType`/`limitCount` 是前端自己给 spu 对象赋的值（`s-point-block.vue:263`、`seckill.vue:272`），`couponIds` 来自装修数据，`income`/`expense` 在注释里
+- **`promos` 与 `verification`**：Java 侧同样没有这两个字段，前端均用可选链（`data.promos?.length`、`userInfo.verification?.mobile`）容错，属前端历史遗留
+- **同名常量值冲突**：全项目扫描仅 F6 一处
+
+### F7 【P2】秒杀单次限购对 `0` 的语义不同
+
+- Java `SeckillActivityServiceImpl.validateJoinSeckill`：`if (count > activity.getSingleLimitCount()) throw ...` —— **无条件校验**，`singleLimitCount = 0` 时任何购买都被拒绝
+- Go `internal/service/mall/promotion/seckill_activity.go:550`：`if act.SingleLimitCount > 0 && count > act.SingleLimitCount` —— `0` 被当作「不限购」
+
+`migrations/000001_baseline.up.sql:1526` 中该列有 `DEFAULT 0`，所以 0 值是可能出现的。正常后台配置下该值大于 0，两边行为一致；仅在配置为 0 时分歧（Java 全拒、Go 放行）。
+
+### F8 已核对一致（本轮补充）
+
+- **自提门店营业时间**：Java `@JsonFormat(shape = STRING, pattern = "HH:mm")` 输出 `"09:00"`，Go `support.go:73` 用 `string(item.OpeningTime)[:min(5, len(...))]` 截取同样得到 `"09:00"`，前端 `pickUpVerify.vue:25` 直接拼接显示，一致
+
+
+## F 系列修复结果（2026-09-08）
+
+本轮沿用 `codex/java-alignment-audit`，实现与验证均未使用 subagent。F1～F7 已按下表处理，F8 保持已确认一致的行为。
+
+| 项目 | 处理结果 | 回归证据 |
+|---|---|---|
+| F1 | 三个 App handler 文件中的 10 处错误 key 全部改用 `context.GetUserId(c)`。后台短信模板重复的身份读取 helper 也改用公共入口。新增 AST 检查，禁止 handler 再以字符串 key 直接读取 user ID | `TestHandlersUseSharedUserIdentityAccessor`；真实数据库的排行 handler 测试用可信 userID=17 与错误 key 的干扰值 999 验证不会串用 |
+| F2 | 新消息与已读通知统一为 `kefu_message_type`、`kefu_message_read_status_change`，定义在 `internal/consts/websocket.go`。客服推送按可信 tenantID、用户类型与接收人筛选连接；仅管理员通知允许省略接收人，缺会员接收人或缺租户时不广播 | `TestFrontKefuWebSocketContractAndIsolationPostgres`：真实本地 WebSocket 连接验证会员回显、管理员推送、已读通知、同 ID 不同用户类型不重复收件、跨租户与其他会员不收件 |
+| F3 | 三个排行榜共用解析器支持重复键、`[]`、`[0]/[1]`、逗号分隔四种形式；get-rank-by-price 对缺失 / 非法范围返回参数错误。真实数据库测试额外发现原派生表子查询被 TenantPlugin 拒绝且错误被忽略，排名恒为 1；改用 GORM Gen 的分组聚合 Count，并传播错误 | `TestQueryTimeRangeFrontEncodings`；`TestFrontRankIdentityAndTimeEncodingsPostgres` 验证四种编码均返回正确第 2 名、排除时间范围外数据及其他租户数据 |
+| F4 | WebSocket 外层 content 改为 JSON 字符串；构造消息时先序列化业务对象，外层消息再序列化；序列化错误显式返回 | 上述 WebSocket 测试按前端两次 JSON 解析流程校验事件名、conversationId、消息 id 与内容 |
+| F5 | 砍价助力列表补 `middleware.Auth()`。社交绑定与生成小程序码保留已有登录要求：前端当前均先登录，没有为形式对齐而放开写入身份关联或调用平台 API 的边界 | `TestPrivateRoutesRejectAnonymous` 增加三条路由验证 |
+| F6 | 删除 service/pay 的重复退款枚举；修正售后成功校验、订单退款回调中的硬编码 2、后台退款导出映射，统一使用 0/10/20。数据库既有退款写入使用正确枚举，无需新增迁移 | `TestFrontSuccessfulRefundStatusPostgres`：0/1/2/20 均拒绝，10 可完成售后，重复成功通知不重复累计退款金额 |
+| F7 | 单次限购无条件检查 `count > SingleLimitCount`，配置为 0 时拒绝购买，不再解释为无限制 | `TestFrontSeckillZeroSingleLimitPostgres`：0 拒绝购买 1 件；限购 2 时允许 2 件、拒绝 3 件 |
+| F8 | 营业时间 HH:mm 输出保持不变 | 本项为一致性确认，无需代码修正 |
+
+### F 系列本轮验证范围
+
+- 针对性用例使用真实 PostgreSQL 隔离 schema、实际 handler / service 和本地 WebSocket 连接运行，带 `-race`。初次测试揭示排名查询的租户插件拒绝与后台重复身份 helper，修复后通过。
+- `make test-integration` 通过：402 个测试（含子测试）、157 个顶层测试、39 个有测试的包，无失败或跳过，PostgreSQL / Redis 验收检查器通过。
+- 全量验证后补充了“缺失会员接收人或租户不得广播”的保护与断言，重新运行受影响的客服 WebSocket 回归用例（真实 PostgreSQL + WebSocket + `-race`），通过。
+- `go build ./...`、`go vet ./...` 和 `git diff --check` 通过；构建输出过本机模块缓存权限提示，退出状态为 0。
+- 本轮未执行业务库写入、真实支付 / 退款渠道、微信绑定平台或 uniapp 真机联调；本地 WebSocket 收发测试不代表公网代理、弱网与重连场景已验收。

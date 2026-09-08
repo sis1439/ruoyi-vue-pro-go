@@ -756,7 +756,7 @@ func (s *TradeAfterSaleService) UpdateAfterSaleRefunded(ctx context.Context, aft
 		if err != nil {
 			return err
 		}
-		if refund == nil || refund.Status != pay.PayRefundStatusSuccess || refund.RefundPrice != as.RefundPrice || refund.MerchantOrderId != strconv.FormatInt(as.OrderID, 10) || refund.MerchantRefundId != strconv.FormatInt(as.ID, 10) {
+		if refund == nil || refund.Status != consts.PayRefundStatusSuccess || refund.RefundPrice != as.RefundPrice || refund.MerchantOrderId != strconv.FormatInt(as.OrderID, 10) || refund.MerchantRefundId != strconv.FormatInt(as.ID, 10) {
 			return fmt.Errorf("支付退款信息不匹配")
 		}
 	} else if payRefundId != 0 {

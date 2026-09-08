@@ -1,6 +1,7 @@
 package brokerage
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
@@ -34,7 +35,7 @@ func NewAppBrokerageUserHandler(userSvc *brokerage.BrokerageUserService, recordS
 
 // GetBrokerageUser 获得个人分销信息
 func (h *AppBrokerageUserHandler) GetBrokerageUser(c *gin.Context) {
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 	user, err := h.userSvc.GetOrCreateBrokerageUser(c, userId)
 	if err != nil {
 		response.WriteError(c, 500, err.Error())
@@ -67,7 +68,7 @@ func (h *AppBrokerageUserHandler) BindBrokerageUser(c *gin.Context) {
 		response.WriteError(c, 400, "参数错误")
 		return
 	}
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 	success, err := h.userSvc.BindBrokerageUser(c, userId, int64(r.BindUserID))
 	if err != nil {
 		response.WriteError(c, 500, err.Error()) // Or 400
@@ -78,7 +79,7 @@ func (h *AppBrokerageUserHandler) BindBrokerageUser(c *gin.Context) {
 
 // GetBrokerageUserSummary 获得个人分销统计
 func (h *AppBrokerageUserHandler) GetBrokerageUserSummary(c *gin.Context) {
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 	user, err := h.userSvc.GetBrokerageUser(c, userId)
 	if err != nil {
 		response.WriteError(c, 500, err.Error())
@@ -137,7 +138,7 @@ func (h *AppBrokerageUserHandler) GetBrokerageUserChildSummaryPage(c *gin.Contex
 		response.WriteError(c, 400, "参数错误")
 		return
 	}
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 	pageResult, err := h.userSvc.GetBrokerageUserChildSummaryPage(c, &r, userId)
 	if err != nil {
 		response.WriteError(c, 500, err.Error())
@@ -225,17 +226,14 @@ func (h *AppBrokerageUserHandler) GetBrokerageUserRankPageByPrice(c *gin.Context
 
 // GetRankByPrice 获得分销用户排行（基于佣金）
 func (h *AppBrokerageUserHandler) GetRankByPrice(c *gin.Context) {
-	// 解析时间参数
-	timesStr := c.QueryArray("times[]")
-	var times []time.Time
-	for _, t := range timesStr {
-		parsed := parseTime(t)
-		if !parsed.IsZero() {
-			times = append(times, parsed)
-		}
+	begin, end, err := types.ParseTimeRange(types.QueryTimeRange(c.Request.URL.Query(), "times"))
+	if err != nil {
+		response.WriteError(c, 400, "时间范围无效")
+		return
 	}
+	times := []time.Time{begin, end}
 
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 	rank, err := h.recordSvc.GetUserRankByPrice(c, userId, times)
 	if err != nil {
 		response.WriteError(c, 500, err.Error())
@@ -243,10 +241,4 @@ func (h *AppBrokerageUserHandler) GetRankByPrice(c *gin.Context) {
 	}
 
 	response.WriteSuccess(c, rank)
-}
-
-// parseTime 辅助函数解析时间字符串
-func parseTime(t string) time.Time {
-	parsed, _ := time.Parse("2006-01-02 15:04:05", t)
-	return parsed
 }

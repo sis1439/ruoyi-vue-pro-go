@@ -17,6 +17,12 @@ func QueryTimeRange(values url.Values, key string) []string {
 	if a, b := values.Get(key+"[0]"), values.Get(key+"[1]"); a != "" && b != "" {
 		return []string{a, b}
 	}
+	if v := values[key]; len(v) == 1 {
+		parts := strings.Split(v[0], ",")
+		if len(parts) == 2 {
+			return []string{strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])}
+		}
+	}
 	return nil
 }
 func ParseTimeRange(values []string) (time.Time, time.Time, error) {

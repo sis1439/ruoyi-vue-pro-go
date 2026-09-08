@@ -1,6 +1,7 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
@@ -71,7 +72,7 @@ func (h *AppCombinationRecordHandler) GetCombinationRecordPage(c *gin.Context) {
 	req.PageSize, _ = strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	req.Status, _ = strconv.Atoi(c.DefaultQuery("status", "0"))
 
-	userId := c.GetInt64("userId") // Requires Auth Middleware
+	userId := context.GetUserId(c) // Requires Auth Middleware
 
 	list, err := h.svc.GetCombinationRecordPage(c.Request.Context(), userId, req)
 	if err != nil {
@@ -89,7 +90,7 @@ func (h *AppCombinationRecordHandler) GetCombinationRecordDetail(c *gin.Context)
 		return
 	}
 
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 
 	detail, err := h.svc.GetCombinationRecordDetail(c.Request.Context(), userId, id)
 	if err != nil {

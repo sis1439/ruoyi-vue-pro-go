@@ -16,13 +16,6 @@ const (
 	PayNotifyStatusRequestFailure = 22 // 请求失败
 )
 
-// PayRefundStatusEnum 退款状态 (对齐 Java)
-const (
-	PayRefundStatusWaiting = 0 // 退款中
-	PayRefundStatusSuccess = 1 // 退款成功
-	PayRefundStatusFailure = 2 // 退款失败
-)
-
 // PayTransferStatusEnum 转账状态 (对齐 Java)
 const (
 	PayTransferStatusWaiting    = 0  // 等待转账

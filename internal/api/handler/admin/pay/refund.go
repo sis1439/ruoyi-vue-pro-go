@@ -2,6 +2,7 @@ package pay
 
 import (
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
@@ -137,11 +138,11 @@ func (h *PayRefundHandler) ExportRefundExcel(c *gin.Context) {
 
 		statusStr := "未知"
 		switch item.Status {
-		case paySvc.PayRefundStatusWaiting:
+		case consts.PayRefundStatusWaiting:
 			statusStr = "等待退款"
-		case paySvc.PayRefundStatusSuccess:
+		case consts.PayRefundStatusSuccess:
 			statusStr = "退款成功"
-		case paySvc.PayRefundStatusFailure:
+		case consts.PayRefundStatusFailure:
 			statusStr = "退款失败"
 		}
 

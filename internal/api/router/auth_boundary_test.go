@@ -54,6 +54,8 @@ func TestPrivateRoutesRejectAnonymous(t *testing.T) {
 	RegisterAppRoutes(router, app)
 	RegisterSystemRoutes(router, system, infra, middleware.NewCasbinMiddleware(nil, nil))
 	paths := []struct{ method, path string }{
+		{"GET", "/app-api/promotion/bargain-help/list?recordId=1"},
+		{"POST", "/app-api/member/social-user/bind"}, {"POST", "/app-api/member/social-user/wxa-qrcode"},
 		{"POST", "/app-api/infra/file/create"}, {"POST", "/app-api/infra/file/upload"}, {"GET", "/app-api/infra/file/presigned-url?name=a.png"},
 		{"PUT", "/app-api/trade/after-sale/delivery"}, {"GET", "/app-api/trade/after-sale-log/list?afterSaleId=1"},
 		{"DELETE", "/app-api/trade/order/delete?id=1"}, {"POST", "/app-api/trade/order/item/create-comment"},

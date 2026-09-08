@@ -59,3 +59,24 @@ func TestJavaExpireCombinationBatchPostgres(t *testing.T) {
 	require.Equal(t, 2, trade.called[102])
 	require.Equal(t, 1, trade.called[103])
 }
+
+func TestFrontSeckillZeroSingleLimitPostgres(t *testing.T) {
+	db := testutil.PostgreSQL(t)
+	require.NoError(t, db.Use(&database.TenantPlugin{}))
+	q := query.Use(db)
+	ctx := tenant.WithTenant(context.Background(), 1)
+	config := &model.PromotionSeckillConfig{Name: "all day", StartTime: "00:00:00", EndTime: "23:59:59"}
+	require.NoError(t, db.WithContext(ctx).Create(config).Error)
+	act := &model.PromotionSeckillActivity{Name: "limit", ConfigIds: []int64{config.ID}, StartTime: time.Now().Add(-time.Hour), EndTime: time.Now().Add(time.Hour), SingleLimitCount: 0}
+	require.NoError(t, db.WithContext(ctx).Create(act).Error)
+	prod := &model.PromotionSeckillProduct{ActivityID: act.ID, SkuID: 9, Stock: 10}
+	require.NoError(t, db.WithContext(ctx).Create(prod).Error)
+	svc := &SeckillActivityService{q: q, configSvc: NewSeckillConfigService(q)}
+	_, _, err := svc.ValidateJoinSeckill(ctx, act.ID, 9, 1)
+	require.ErrorContains(t, err, "超出单次限购")
+	require.NoError(t, db.WithContext(ctx).Model(act).Update("single_limit_count", 2).Error)
+	_, _, err = svc.ValidateJoinSeckill(ctx, act.ID, 9, 2)
+	require.NoError(t, err)
+	_, _, err = svc.ValidateJoinSeckill(ctx, act.ID, 9, 3)
+	require.ErrorContains(t, err, "超出单次限购")
+}
