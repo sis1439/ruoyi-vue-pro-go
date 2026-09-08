@@ -10,6 +10,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/response"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -155,6 +156,7 @@ func (h *AppBargainActivityHandler) GetBargainActivityDetail(c *gin.Context) {
 
 	// 匹配 Java BargainActivityConvert.convert(activity, successUserCount, spu)
 	detail := appPromotionContract.AppBargainActivityDetailRespVO{
+		Price: spu.Price, Description: spu.Description,
 		AppBargainActivityRespVO: h.convertActivityResp(act, spuResp),
 		BargainFirstPrice:        act.BargainFirstPrice,
 		HelpMaxCount:             act.HelpMaxCount,
@@ -173,8 +175,8 @@ func (h *AppBargainActivityHandler) convertActivityResp(item *promotionModel.Pro
 	r := appPromotionContract.AppBargainActivityRespVO{
 		ID:              item.ID,
 		Name:            item.Name,
-		StartTime:       item.StartTime,
-		EndTime:         item.EndTime,
+		StartTime:       types.ToJsonDateTime(item.StartTime),
+		EndTime:         types.ToJsonDateTime(item.EndTime),
 		SpuID:           item.SpuID,
 		SkuID:           item.SkuID,
 		Stock:           item.Stock,

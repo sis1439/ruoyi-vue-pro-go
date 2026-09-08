@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/samber/lo"
 	"strconv"
 	"time"
 
@@ -128,8 +129,8 @@ func (s *BrokerageWithdrawService) auditBrokerageWithdrawSuccess(ctx context.Con
 // isApiWithdrawType 判断是否为 API 提现类型
 func (s *BrokerageWithdrawService) isApiWithdrawType(withdrawType int) bool {
 	return withdrawType == consts.BrokerageWithdrawTypeWallet ||
-		withdrawType == consts.BrokerageWithdrawTypeWechat ||
-		withdrawType == consts.BrokerageWithdrawTypeAlipay
+		withdrawType == consts.BrokerageWithdrawTypeWechatAPI ||
+		withdrawType == consts.BrokerageWithdrawTypeAlipayAPI
 }
 
 // createPayTransfer 创建支付转账
@@ -143,10 +144,10 @@ func (s *BrokerageWithdrawService) createPayTransfer(ctx context.Context, withdr
 	transferType := 0
 
 	switch withdraw.Type {
-	case consts.BrokerageWithdrawTypeAlipay:
+	case consts.BrokerageWithdrawTypeAlipayAPI:
 		channelCode = "alipay_pc"
 		transferType = consts.PayTransferTypeAlipayBalance
-	case consts.BrokerageWithdrawTypeWechat:
+	case consts.BrokerageWithdrawTypeWechatAPI:
 		channelCode = withdraw.TransferChannelCode
 		userAccount = withdraw.UserAccount
 		transferType = consts.PayTransferTypeWxBalance
@@ -221,34 +222,39 @@ func getClientIP(ctx context.Context) string {
 
 // CreateBrokerageWithdraw 创建佣金提现
 func (s *BrokerageWithdrawService) CreateBrokerageWithdraw(ctx context.Context, userId int64, reqVO *tradeReq.AppBrokerageWithdrawCreateReqVO) (int64, error) {
+	if err := reqVO.Validate(); err != nil {
+		return 0, err
+	}
+	price := *reqVO.Price
 	// 1.1 校验提现金额
 	config, err := s.tradeConfigSvc.GetTradeConfig(ctx)
 	if err != nil {
 		return 0, err
 	}
-	if config.BrokerageWithdrawMinPrice > 0 && reqVO.Price < config.BrokerageWithdrawMinPrice {
+	if config.BrokerageWithdrawMinPrice > 0 && price < config.BrokerageWithdrawMinPrice {
 		return 0, errors.New("提现金额低于最低提现金额")
 	}
 
 	// 2.1 计算手续费
 	feePrice := 0
 	if config.BrokerageWithdrawFeePercent > 0 {
-		feePrice = reqVO.Price * config.BrokerageWithdrawFeePercent / 100
+		feePrice = price * config.BrokerageWithdrawFeePercent / 100
 	}
 
 	// 2.2 创建佣金提现记录
 	withdraw := &brokerage.BrokerageWithdraw{
-		UserID:      userId,
-		Price:       reqVO.Price,
-		FeePrice:    feePrice,
-		TotalPrice:  reqVO.Price, // Java: setTotalPrice(price)
-		Type:        reqVO.Type,
-		UserName:    reqVO.Name,
-		UserAccount: reqVO.Account,
-		BankName:    reqVO.BankName,
-		BankAddress: reqVO.BankAddress,
-		QrCodeURL:   reqVO.QrCodeUrl,
-		Status:      consts.BrokerageWithdrawStatusAuditing,
+		UserID:              userId,
+		Price:               price,
+		FeePrice:            feePrice,
+		TotalPrice:          price, // Java: setTotalPrice(price)
+		Type:                reqVO.Type,
+		UserName:            reqVO.UserName,
+		TransferChannelCode: reqVO.TransferChannelCode,
+		UserAccount:         reqVO.UserAccount,
+		BankName:            lo.FromPtr(reqVO.BankName),
+		BankAddress:         reqVO.BankAddress,
+		QrCodeURL:           reqVO.QrCodeUrl,
+		Status:              consts.BrokerageWithdrawStatusAuditing,
 	}
 
 	err = s.q.Transaction(func(tx *query.Query) error {
@@ -260,7 +266,7 @@ func (s *BrokerageWithdrawService) CreateBrokerageWithdraw(ctx context.Context, 
 
 		// 3. 创建用户佣金记录（扣减佣金）
 		// 注意：佣金是否充足，ReduceBrokerageForWithdraw 已经进行校验
-		return s.recordSvc.ReduceBrokerageForWithdraw(ctx, userId, strconv.FormatInt(withdraw.ID, 10), reqVO.Price)
+		return s.recordSvc.ReduceBrokerageForWithdraw(ctx, userId, strconv.FormatInt(withdraw.ID, 10), price)
 	})
 	if err != nil {
 		return 0, err

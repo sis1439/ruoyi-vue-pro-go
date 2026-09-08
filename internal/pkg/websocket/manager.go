@@ -123,3 +123,21 @@ func (m *Manager) BroadcastByUserType(userType int, message []byte) {
 		}
 	}
 }
+
+// SendToTenant sends to one identity, or broadcasts within a tenant and user type when userID is zero.
+func (m *Manager) SendToTenant(tenantID, userID int64, userType int, message []byte) {
+	if tenantID <= 0 {
+		return
+	}
+	m.mu.RLock()
+	recipients := make([]*Session, 0)
+	for _, session := range m.sessions {
+		if session.TenantID == tenantID && session.UserType == userType && (userID == 0 || session.UserID == userID) {
+			recipients = append(recipients, session)
+		}
+	}
+	m.mu.RUnlock()
+	for _, session := range recipients {
+		_ = session.Send(message)
+	}
+}

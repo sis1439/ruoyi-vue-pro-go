@@ -2,6 +2,9 @@ package brokerage
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
+	"sort"
+	"strings"
 	"time"
 
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
@@ -439,39 +442,108 @@ func (s *BrokerageUserService) GetBrokerageUserCountByBindUserId(ctx context.Con
 }
 
 // GetBrokerageUserChildSummaryPage 获得下级分销统计分页
-func (s *BrokerageUserService) GetBrokerageUserChildSummaryPage(ctx context.Context, r *tradeReq.AppBrokerageUserChildSummaryPageReqVO, userId int64) (*pagination.PageResult[*brokerage.BrokerageUser], error) {
-	childIDs, err := s.GetChildUserIdsByLevel(ctx, userId, r.Level)
+func (s *BrokerageUserService) GetBrokerageUserChildSummaryPage(ctx context.Context, r *tradeReq.AppBrokerageUserChildSummaryPageReqVO, userId int64) (*pagination.PageResult[*tradeReq.AppBrokerageUserChildSummaryRespVO], error) {
+	ids, err := s.GetChildUserIdsByLevel(ctx, userId, r.Level)
 	if err != nil {
 		return nil, err
 	}
-	if len(childIDs) == 0 {
-		return &pagination.PageResult[*brokerage.BrokerageUser]{List: []*brokerage.BrokerageUser{}, Total: 0}, nil
+	if len(ids) == 0 {
+		return pagination.NewEmptyPageResult[*tradeReq.AppBrokerageUserChildSummaryRespVO](), nil
 	}
-
-	q := s.q.BrokerageUser.WithContext(ctx).Where(s.q.BrokerageUser.ID.In(childIDs...))
-
-	// 注：昵称过滤需要与 MemberUser 表关联，此处简化实现，昵称信息由调用层补充
-	// Java 实现通过 join 或 map 方式获取用户信息
-	// 排序逻辑:
-	switch r.Sorting {
-	case "userCount":
-		// 按用户数量排序：复杂查询，暂用默认排序
-	case "brokeragePrice":
-		q = q.Order(s.q.BrokerageUser.BrokeragePrice.Desc())
-	default:
-		q = q.Order(s.q.BrokerageUser.BrokerageTime.Desc())
+	u := s.q.MemberUser
+	usersQuery := u.WithContext(ctx).Where(u.ID.In(ids...))
+	if r.Nickname != "" {
+		usersQuery = usersQuery.Where(u.Nickname.Like("%" + r.Nickname + "%"))
 	}
-
-	total, err := q.Count()
+	users, err := usersQuery.Find()
 	if err != nil {
 		return nil, err
 	}
-
-	list, err := q.Limit(r.PageSize).Offset((r.PageNo - 1) * r.PageSize).Find()
+	members := make(map[int64]*tradeReq.AppBrokerageUserChildSummaryRespVO, len(users))
+	for _, user := range users {
+		members[user.ID] = &tradeReq.AppBrokerageUserChildSummaryRespVO{ID: user.ID, Nickname: user.Nickname, Avatar: user.Avatar}
+	}
+	bu := s.q.BrokerageUser
+	list, err := bu.WithContext(ctx).Where(bu.ID.In(ids...)).Find()
 	if err != nil {
 		return nil, err
 	}
-	return &pagination.PageResult[*brokerage.BrokerageUser]{List: list, Total: total}, nil
+	br := s.q.BrokerageRecord
+	var totals []struct {
+		UserID     int64
+		Price      int
+		OrderCount int
+	}
+	err = br.WithContext(ctx).Select(br.UserID, br.Price.Sum().As("price"), br.ID.Count().As("order_count")).Where(br.UserID.In(ids...), br.BizType.Eq(consts.BrokerageRecordBizTypeOrder), br.Status.Eq(consts.BrokerageRecordStatusSettlement)).Group(br.UserID).Scan(&totals)
+	if err != nil {
+		return nil, err
+	}
+	for _, total := range totals {
+		if item := members[total.UserID]; item != nil {
+			item.BrokeragePrice = total.Price
+			item.BrokerageOrderCount = total.OrderCount
+		}
+	}
+	var counts []struct {
+		BindUserID int64
+		Count      int
+	}
+	err = bu.WithContext(ctx).Select(bu.BindUserID, bu.ID.Count().As("count")).Where(bu.BindUserID.In(ids...)).Group(bu.BindUserID).Scan(&counts)
+	if err != nil {
+		return nil, err
+	}
+	for _, count := range counts {
+		if item := members[count.BindUserID]; item != nil {
+			item.BrokerageUserCount = count.Count
+		}
+	}
+	// ponytail: 两级团队统计在内存排序；大团队时改成带租户条件的聚合分页 SQL。
+	result := make([]*tradeReq.AppBrokerageUserChildSummaryRespVO, 0, len(list))
+	for _, user := range list {
+		if item := members[user.ID]; item != nil {
+			item.BrokerageTime = types.ToJsonDateTimePtr(user.BindUserTime)
+			result = append(result, item)
+		}
+	}
+	field := r.Sorting
+	if field == "" {
+		field = r.LegacySorting
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		var x, y int64
+		switch field {
+		case "userCount":
+			x = int64(result[i].BrokerageUserCount)
+			y = int64(result[j].BrokerageUserCount)
+		case "orderCount":
+			x = int64(result[i].BrokerageOrderCount)
+			y = int64(result[j].BrokerageOrderCount)
+		case "price", "brokeragePrice":
+			x = int64(result[i].BrokeragePrice)
+			y = int64(result[j].BrokeragePrice)
+		default:
+			if result[i].BrokerageTime != nil {
+				x = time.Time(*result[i].BrokerageTime).UnixMilli()
+			}
+			if result[j].BrokerageTime != nil {
+				y = time.Time(*result[j].BrokerageTime).UnixMilli()
+			}
+		}
+		if x == y {
+			return result[i].ID > result[j].ID
+		}
+		if strings.EqualFold(r.SortingOrder, "asc") {
+			return x < y
+		}
+		return x > y
+	})
+	total := int64(len(result))
+	start := min(r.GetOffset(), len(result))
+	end := len(result)
+	if r.GetLimit() != -1 {
+		end = min(start+r.GetLimit(), end)
+	}
+	return &pagination.PageResult[*tradeReq.AppBrokerageUserChildSummaryRespVO]{List: result[start:end], Total: total}, nil
 }
 
 // BrokerageUserRankByUserCountResult 分销用户排行（基于用户量）结果
@@ -483,10 +555,9 @@ type BrokerageUserRankByUserCountResult struct {
 // GetBrokerageUserRankPageByUserCount 获得分销用户排行分页（基于用户量）
 func (s *BrokerageUserService) GetBrokerageUserRankPageByUserCount(ctx context.Context, r *tradeReq.AppBrokerageUserRankPageReqVO) (*pagination.PageResult[*BrokerageUserRankByUserCountResult], error) {
 	// 解析时间范围
-	var beginTime, endTime time.Time
-	if len(r.Times) >= 2 {
-		beginTime = parseTime(r.Times[0])
-		endTime = parseTime(r.Times[1])
+	beginTime, endTime, err := types.ParseTimeRange(r.Times)
+	if err != nil {
+		return nil, err
 	}
 
 	// 使用 Gen 生成的字段和表名构建查询

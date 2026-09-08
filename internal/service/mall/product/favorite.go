@@ -2,6 +2,7 @@ package product
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	product2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/product"
@@ -152,7 +153,7 @@ func (s *ProductFavoriteService) GetAppFavoritePage(ctx context.Context, userId 
 		r := product2.AppFavoriteResp{
 			ID:         item.ID,
 			SpuID:      item.SpuID,
-			CreateTime: item.CreateTime,
+			CreateTime: types.ToJsonDateTime(item.CreateTime),
 		}
 		if spu, ok := spuMap[item.SpuID]; ok {
 			r.SpuName = spu.Name

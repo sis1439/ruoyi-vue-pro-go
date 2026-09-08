@@ -16,6 +16,7 @@ type MemberUser struct {
 	LoginIP          string     `gorm:"column:login_ip;size:32;default:'';comment:最后登录IP" json:"loginIp"`
 	LoginDate        *time.Time `gorm:"column:login_date;comment:最后登录时间" json:"loginDate"`
 
+	Email    string     `gorm:"size:255;default:'';comment:邮箱" json:"email"`
 	Nickname string     `gorm:"size:30;default:'';comment:用户昵称" json:"nickname"`
 	Avatar   string     `gorm:"size:255;default:'';comment:头像" json:"avatar"`
 	Name     string     `gorm:"size:30;default:'';comment:真实姓名" json:"name"`

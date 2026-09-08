@@ -1,6 +1,7 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
@@ -68,19 +69,19 @@ type AppCombinationRecordSummaryRespVO struct {
 
 // AppCombinationRecordRespVO App 拼团记录 Response VO
 type AppCombinationRecordRespVO struct {
-	ID               int64     `json:"id"`
-	ActivityID       int64     `json:"activityId"`
-	Nickname         string    `json:"nickname"`
-	Avatar           string    `json:"avatar"`
-	ExpireTime       time.Time `json:"expireTime"`
-	UserSize         int       `json:"userSize"`
-	UserCount        int       `json:"userCount"`
-	Status           int       `json:"status"`
-	OrderID          int64     `json:"orderId"`
-	SpuName          string    `json:"spuName"`
-	PicUrl           string    `json:"picUrl"`
-	Count            int       `json:"count"`
-	CombinationPrice int       `json:"combinationPrice"`
+	ID               int64              `json:"id"`
+	ActivityID       int64              `json:"activityId"`
+	Nickname         string             `json:"nickname"`
+	Avatar           string             `json:"avatar"`
+	ExpireTime       types.JsonDateTime `json:"expireTime"`
+	UserSize         int                `json:"userSize"`
+	UserCount        int                `json:"userCount"`
+	Status           int                `json:"status"`
+	OrderID          int64              `json:"orderId"`
+	SpuName          string             `json:"spuName"`
+	PicUrl           string             `json:"picUrl"`
+	Count            int                `json:"count"`
+	CombinationPrice int                `json:"combinationPrice"`
 }
 
 // AppCombinationRecordDetailRespVO App 拼团记录详情 Response VO
@@ -160,8 +161,8 @@ type AppCombinationActivityDetailRespVO struct {
 	ID               int64                                 `json:"id"`
 	Name             string                                `json:"name"`
 	Status           int                                   `json:"status"`
-	StartTime        *time.Time                            `json:"startTime"`
-	EndTime          *time.Time                            `json:"endTime"`
+	StartTime        *types.JsonDateTime                   `json:"startTime"`
+	EndTime          *types.JsonDateTime                   `json:"endTime"`
 	UserSize         int                                   `json:"userSize"`
 	SuccessCount     int                                   `json:"successCount"`
 	SpuID            int64                                 `json:"spuId"`

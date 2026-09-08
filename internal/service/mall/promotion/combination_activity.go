@@ -2,6 +2,7 @@ package promotion
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/samber/lo"
@@ -556,8 +557,8 @@ func (s *combinationActivityService) GetCombinationActivityDetail(ctx context.Co
 		ID:               activity.ID,
 		Name:             activity.Name,
 		Status:           activity.Status,
-		StartTime:        &activity.StartTime,
-		EndTime:          &activity.EndTime,
+		StartTime:        types.ToJsonDateTimePtr(&activity.StartTime),
+		EndTime:          types.ToJsonDateTimePtr(&activity.EndTime),
 		UserSize:         activity.UserSize,
 		SuccessCount:     int(successCount),
 		SpuID:            activity.SpuID,

@@ -1,6 +1,6 @@
 package member
 
-import "time"
+import "github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 // AppAddressCreateReq 创建收件地址请求
 type AppAddressCreateReq struct {
@@ -23,11 +23,12 @@ type AppAddressUpdateReq struct {
 
 // AppAddressResp 收件地址响应
 type AppAddressResp struct {
-	ID            int64     `json:"id"`
-	Name          string    `json:"name"`
-	Mobile        string    `json:"mobile"`
-	AreaID        int64     `json:"areaId"`
-	DetailAddress string    `json:"detailAddress"`
-	DefaultStatus bool      `json:"defaultStatus"`
-	CreateTime    time.Time `json:"createTime"`
+	AreaName      string             `json:"areaName"`
+	ID            int64              `json:"id"`
+	Name          string             `json:"name"`
+	Mobile        string             `json:"mobile"`
+	AreaID        int64              `json:"areaId"`
+	DetailAddress string             `json:"detailAddress"`
+	DefaultStatus bool               `json:"defaultStatus"`
+	CreateTime    types.JsonDateTime `json:"createTime"`
 }

@@ -46,7 +46,7 @@ func (c *SeckillActivityPriceCalculator) Calculate(ctx context.Context, req *tra
 
 	// 秒杀订单只允许一个商品
 	if len(req.Items) != 1 {
-		err := pkgErrors.NewBizError(1004003001, "秒杀时，只允许选择一个商品")
+		err := pkgErrors.NewBizError(1011900001, "秒杀时，只允许选择一个商品")
 		c.LogError(ctx, req, err, "秒杀订单商品数量验证失败")
 		return err
 	}
@@ -54,7 +54,7 @@ func (c *SeckillActivityPriceCalculator) Calculate(ctx context.Context, req *tra
 	item := req.Items[0]
 
 	// 验证秒杀活动并获取秒杀价格
-	_, seckillProd, err := c.seckillSvc.ValidateJoinSeckill(ctx, req.SeckillActivityId, item.SkuID, item.Count)
+	activity, seckillProd, err := c.seckillSvc.ValidateJoinSeckill(ctx, req.SeckillActivityId, item.SkuID, item.Count)
 	if err != nil {
 		c.LogError(ctx, req, err, "验证秒杀活动失败")
 		return err
@@ -70,7 +70,8 @@ func (c *SeckillActivityPriceCalculator) Calculate(ctx context.Context, req *tra
 			promotionDiscount := originalPayPrice - seckillTotal
 
 			resp.Items[i].DiscountPrice += promotionDiscount
-			resp.Items[i].PayPrice = seckillTotal
+			c.Helper.RecountPayPrice(&resp.Items[i])
+			c.Helper.AddPromotion(resp, c.Helper.BuildPromotionDetail(activity.ID, activity.Name, tradeModel.PromotionTypeSeckillActivity, originalPayPrice, promotionDiscount, []int64{item.SkuID}))
 
 			c.LogCalculation(ctx, req, "秒杀价格计算完成",
 				zap.Int64("skuId", item.SkuID),

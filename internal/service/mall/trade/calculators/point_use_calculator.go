@@ -4,8 +4,8 @@ import (
 	"context"
 
 	tradeModel "github.com/wxlbd/ruoyi-mall-go/internal/consts"
-	memberSvc "github.com/wxlbd/ruoyi-mall-go/internal/service/member"
 	tradeSvc "github.com/wxlbd/ruoyi-mall-go/internal/service/mall/trade"
+	memberSvc "github.com/wxlbd/ruoyi-mall-go/internal/service/member"
 	pkgErrors "github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -88,7 +88,7 @@ func (c *PointUsePriceCalculator) Calculate(ctx context.Context, req *tradeSvc.T
 
 	// 限制不超过应付金额（严格对齐：禁止 0 元购）
 	if pointTotalValue >= currentPayPrice {
-		err := pkgErrors.NewBizError(1004003005, "支付金额不能小于等于 0")
+		err := pkgErrors.NewBizError(1011904005, "支付金额不能小于等于 0")
 		c.LogError(ctx, req, err, "积分抵扣金额超过支付金额")
 		return err
 	}

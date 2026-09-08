@@ -92,7 +92,7 @@ func (s *CouponUserService) TakeCoupon(ctx context.Context, userId int64, req *p
 		DiscountType:       template.DiscountType,
 		DiscountPrice:      template.DiscountPrice,
 		DiscountPercent:    template.DiscountPercent,
-		DiscountLimitPrice: template.DiscountLimitPrice,
+		DiscountLimitPrice: &template.DiscountLimitPrice,
 	}
 
 	err = s.q.Transaction(func(tx *query.Query) error {
@@ -148,7 +148,7 @@ func (s *CouponUserService) GetCouponPage(ctx context.Context, userId int64, req
 			DiscountType:       coupon.DiscountType,
 			DiscountPercent:    coupon.DiscountPercent,
 			DiscountPrice:      coupon.DiscountPrice,
-			DiscountLimitPrice: coupon.DiscountLimitPrice,
+			DiscountLimitPrice: lo.FromPtr(coupon.DiscountLimitPrice),
 		}
 	})
 
@@ -232,8 +232,8 @@ func (s *CouponUserService) CalculateCoupon(ctx context.Context, userId int64, c
 		discount = int64(coupon.DiscountPrice)
 	case consts.DiscountTypePercent: // 折扣
 		discount = price * int64(coupon.DiscountPercent) / 100
-		if coupon.DiscountLimitPrice > 0 && discount > int64(coupon.DiscountLimitPrice) {
-			discount = int64(coupon.DiscountLimitPrice)
+		if coupon.DiscountLimitPrice != nil && discount > int64(*coupon.DiscountLimitPrice) {
+			discount = int64(*coupon.DiscountLimitPrice)
 		}
 	}
 

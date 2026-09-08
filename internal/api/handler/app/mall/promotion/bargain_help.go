@@ -8,6 +8,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/member"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/response"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -74,8 +75,9 @@ func (h *AppBargainHelpHandler) GetBargainHelpList(c *gin.Context) {
 	resList := make([]promotionContract.AppBargainHelpRespVO, len(list))
 	for i, item := range list {
 		vo := promotionContract.AppBargainHelpRespVO{
+			UserID:      item.UserID,
 			ReducePrice: item.ReducePrice,
-			CreateTime:  item.CreateTime,
+			CreateTime:  types.ToJsonDateTime(item.CreateTime),
 		}
 		if u, ok := userMap[item.UserID]; ok {
 			vo.Nickname = u.Nickname

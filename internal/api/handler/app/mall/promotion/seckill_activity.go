@@ -1,6 +1,7 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 	"time"
 
@@ -233,8 +234,8 @@ func (h *AppSeckillActivityHandler) GetSeckillActivity(c *gin.Context) {
 		Name:             act.Name,
 		Status:           act.Status,
 		SpuID:            act.SpuID,
-		StartTime:        &act.StartTime,
-		EndTime:          &act.EndTime,
+		StartTime:        types.ToJsonDateTimePtr(&act.StartTime),
+		EndTime:          types.ToJsonDateTimePtr(&act.EndTime),
 		SingleLimitCount: act.SingleLimitCount,
 		TotalLimitCount:  act.TotalLimitCount,
 		Stock:            act.Stock,
@@ -356,7 +357,7 @@ func (h *AppSeckillActivityHandler) GetSeckillActivityListByIds(c *gin.Context) 
 	}
 
 	// 4. 构建响应
-	var activeList []promotion2.AppSeckillActivityResp
+	activeList := make([]promotion2.AppSeckillActivityResp, 0, len(enabledActivities))
 	for _, act := range enabledActivities {
 		spu, ok := spuMap[act.SpuID]
 		if !ok {

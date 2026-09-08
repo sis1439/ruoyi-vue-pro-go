@@ -154,22 +154,6 @@ const (
 )
 
 // 兼容旧的常量名（保留向后兼容）
-const (
-	// OrderCancelTypeMember 会员取消
-	OrderCancelTypeMember = 10 // 已废弃，使用 TradeOrderCancelTypeMemberCancel
-	// OrderCancelTypeTimeout 支付超时取消
-	OrderCancelTypeTimeout = 20 // 已废弃，使用 TradeOrderCancelTypePayTimeout
-	// OrderCancelTypeAdmin 管理员取消
-	OrderCancelTypeAdmin = 30 // 已废弃
-	// OrderCancelTypeSystem 系统取消
-	OrderCancelTypeSystem = 40 // 已废弃
-	// OrderCancelTypeAfterSaleClose 售后全退关闭
-	OrderCancelTypeAfterSaleClose = 50 // 已废弃，使用 TradeOrderCancelTypeAfterSaleClose
-	// OrderCancelTypePaymentFallback 支付异常回滚
-	OrderCancelTypePaymentFallback = 60 // 已废弃
-	// OrderCancelTypeCombinationClose 拼团关闭取消
-	OrderCancelTypeCombinationClose = 70 // 已废弃，使用 TradeOrderCancelTypeCombinationClose
-)
 
 // 订单退款状态常量 (对齐 Java: TradeOrderRefundStatusEnum)
 const (
@@ -371,8 +355,6 @@ const (
 	TradeOrderItemAfterSaleStatusApply = 10
 	// TradeOrderItemAfterSaleStatusSuccess 成功
 	TradeOrderItemAfterSaleStatusSuccess = 20
-	// TradeOrderItemAfterSaleStatusFail 失败
-	TradeOrderItemAfterSaleStatusFail = 30
 )
 
 // 快递查询渠道常量 (对齐 Java: ExpressClientEnum)
@@ -400,3 +382,13 @@ const (
 	// DefaultPageNo 默认页码
 	DefaultPageNo = 1
 )
+
+func BrokerageRecordStatusName(status int) string {
+	return map[int]string{0: "待结算", 1: "已结算", 2: "已取消"}[status]
+}
+func BrokerageWithdrawStatusName(status int) string {
+	return map[int]string{0: "审核中", 10: "审核通过", 11: "提现成功", 20: "审核不通过", 21: "提现失败"}[status]
+}
+func BrokerageWithdrawTypeName(kind int) string {
+	return map[int]string{1: "钱包", 2: "银行卡", 3: "微信收款码", 4: "支付宝收款码", 5: "微信零钱", 6: "支付宝余额"}[kind]
+}

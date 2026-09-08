@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 	payreq "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	payModel "github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
@@ -12,6 +13,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/pay/client"
 	"github.com/wxlbd/ruoyi-mall-go/internal/testutil"
+	"github.com/wxlbd/ruoyi-mall-go/migrations"
 	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/database"
 	"go.uber.org/zap"
@@ -60,7 +62,7 @@ func TestReviewNotifyInsertFailureMustRollbackPayment(t *testing.T) {
 			tx.AddError(errors.New("injected notification INSERT failure"))
 		}
 	})
-	err := s.NotifyOrder(pkgcontext.WithTenant(context.Background(), 1), 1, &client.OrderResp{Status: PayOrderStatusSuccess, OutTradeNo: "review-P1", Price: 100})
+	err := s.NotifyOrder(pkgcontext.WithTenant(context.Background(), 1), 1, &client.OrderResp{Status: consts.PayOrderStatusSuccess, OutTradeNo: "review-P1", Price: 100})
 	var status int
 	db.Model(&payModel.PayOrder{}).Where("id=1").Pluck("status", &status)
 	var tasks int64
@@ -69,7 +71,7 @@ func TestReviewNotifyInsertFailureMustRollbackPayment(t *testing.T) {
 	if !reached {
 		t.Fatal("test did not reach injection")
 	}
-	if !sameTx || err == nil || status != PayOrderStatusWaiting {
+	if !sameTx || err == nil || status != consts.PayOrderStatusWaiting {
 		t.Fatal("notification INSERT failure was ignored and paid state committed without durable delivery")
 	}
 }
@@ -77,10 +79,10 @@ func TestReviewZeroPaidAmountMustBeRejected(t *testing.T) {
 	db := reviewDB(t)
 	q := query.Use(db)
 	s := &PayOrderService{q: q, channelSvc: NewPayChannelService(q, client.NewPayClientFactory()), notifySvc: &PayNotifyService{q: q}}
-	err := s.NotifyOrder(pkgcontext.WithTenant(context.Background(), 1), 1, &client.OrderResp{Status: PayOrderStatusSuccess, OutTradeNo: "review-P1", Price: 0})
+	err := s.NotifyOrder(pkgcontext.WithTenant(context.Background(), 1), 1, &client.OrderResp{Status: consts.PayOrderStatusSuccess, OutTradeNo: "review-P1", Price: 0})
 	var status int
 	db.Model(&payModel.PayOrder{}).Where("id=1").Pluck("status", &status)
-	if err == nil && status == PayOrderStatusSuccess {
+	if err == nil && status == consts.PayOrderStatusSuccess {
 		t.Fatal("zero/missing channel amount accepted for 100-fen payment")
 	}
 }
@@ -110,7 +112,7 @@ func TestReviewPaymentReplayAndChannelBinding(t *testing.T) {
 	q := query.Use(db)
 	ctx := db.Statement.Context
 	svc := &PayOrderService{q: q, channelSvc: NewPayChannelService(q, client.NewPayClientFactory()), notifySvc: &PayNotifyService{q: q}}
-	dto := &client.OrderResp{Status: PayOrderStatusSuccess, OutTradeNo: "review-P1", Price: 100}
+	dto := &client.OrderResp{Status: consts.PayOrderStatusSuccess, OutTradeNo: "review-P1", Price: 100}
 	for range 3 {
 		if err := svc.NotifyOrder(ctx, 1, dto); err != nil {
 			t.Fatal(err)
@@ -132,7 +134,7 @@ func TestReviewRefundNotificationFailureRollsBackTotal(t *testing.T) {
 	db := reviewDB(t)
 	q := query.Use(db)
 	ctx := db.Statement.Context
-	if err := db.Model(&payModel.PayOrder{}).Where("id=1").Updates(map[string]any{"status": PayOrderStatusSuccess, "channel_id": 1, "no": "review-P1"}).Error; err != nil {
+	if err := db.Model(&payModel.PayOrder{}).Where("id=1").Updates(map[string]any{"status": consts.PayOrderStatusSuccess, "channel_id": 1, "no": "review-P1"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	refund := &payModel.PayRefund{ID: 1, No: "R-review", AppID: 1, OrderID: 1, OrderNo: "review-P1", ChannelID: 1, MerchantOrderId: "1", MerchantRefundId: "refund-1", PayPrice: 100, RefundPrice: 80, Status: consts.PayRefundStatusWaiting}
@@ -197,7 +199,7 @@ func TestReviewRefundReservationConcurrency(t *testing.T) {
 	q := query.Use(db)
 	ctx, cancel := context.WithTimeout(db.Statement.Context, 10*time.Second)
 	defer cancel()
-	if err := db.Model(&payModel.PayOrder{}).Where("id=1").Updates(map[string]any{"status": PayOrderStatusSuccess, "channel_id": 1, "no": "review-P1"}).Error; err != nil {
+	if err := db.Model(&payModel.PayOrder{}).Where("id=1").Updates(map[string]any{"status": consts.PayOrderStatusSuccess, "channel_id": 1, "no": "review-P1"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Model(&payModel.PayChannel{}).Where("id=1").Updates(map[string]any{"code": "review_refund", "config": &payModel.PayClientConfig{ConfigType: payModel.ConfigTypeNone}}).Error; err != nil {
@@ -293,4 +295,26 @@ func TestReviewTransferNotificationSharesTransaction(t *testing.T) {
 	if tasks != 1 {
 		t.Fatalf("duplicate transfer notifications: %d", tasks)
 	}
+}
+
+func TestJavaHistoricalExtensionClosedMigrationPostgres(t *testing.T) {
+	db := testutil.PostgreSQLAt(t, 7)
+	require.NoError(t, db.Exec("INSERT INTO pay_order(id,app_id,merchant_order_id,status,tenant_id) VALUES(900,1,'900',30,1)").Error)
+	require.NoError(t, db.Exec("INSERT INTO pay_order_extension(id,order_id,channel_id,no,status,tenant_id) VALUES(900,900,1,'closed-history',20,1)").Error)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, migrations.Apply(pool, 0))
+	require.NoError(t, migrations.Apply(pool, 0))
+	require.NoError(t, db.Use(&database.TenantPlugin{}))
+	q := query.Use(db)
+	ctx := pkgcontext.WithTenant(context.Background(), 1)
+	svc := &PayOrderService{q: q}
+	for range 2 {
+		require.NoError(t, q.Transaction(func(tx *query.Query) error {
+			return svc.notifyOrderClosedTx(ctx, tx, &payModel.PayChannel{ID: 1}, &client.OrderResp{OutTradeNo: "closed-history", Status: consts.PayOrderStatusClosed})
+		}))
+	}
+	var saved payModel.PayOrderExtension
+	require.NoError(t, db.WithContext(ctx).First(&saved, 900).Error)
+	require.Equal(t, consts.PayOrderStatusClosed, saved.Status)
 }

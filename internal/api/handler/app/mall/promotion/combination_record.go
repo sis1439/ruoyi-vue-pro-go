@@ -1,6 +1,8 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	promotion2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/promotion"
@@ -49,7 +51,7 @@ func (h *AppCombinationRecordHandler) GetHeadCombinationRecordList(c *gin.Contex
 			ActivityID:       item.ActivityID,
 			Nickname:         item.Nickname,
 			Avatar:           item.Avatar,
-			ExpireTime:       &item.ExpireTime,
+			ExpireTime:       types.ToJsonDateTimePtr(&item.ExpireTime),
 			UserSize:         item.UserSize,
 			UserCount:        item.UserCount,
 			Status:           item.Status,
@@ -70,7 +72,7 @@ func (h *AppCombinationRecordHandler) GetCombinationRecordPage(c *gin.Context) {
 	req.PageSize, _ = strconv.Atoi(c.DefaultQuery("pageSize", "10"))
 	req.Status, _ = strconv.Atoi(c.DefaultQuery("status", "0"))
 
-	userId := c.GetInt64("userId") // Requires Auth Middleware
+	userId := context.GetUserId(c) // Requires Auth Middleware
 
 	list, err := h.svc.GetCombinationRecordPage(c.Request.Context(), userId, req)
 	if err != nil {
@@ -88,7 +90,7 @@ func (h *AppCombinationRecordHandler) GetCombinationRecordDetail(c *gin.Context)
 		return
 	}
 
-	userId := c.GetInt64("userId")
+	userId := context.GetUserId(c)
 
 	detail, err := h.svc.GetCombinationRecordDetail(c.Request.Context(), userId, id)
 	if err != nil {

@@ -76,23 +76,27 @@ func (c *RewardActivityPriceCalculator) Calculate(ctx context.Context, req *trad
 		zap.Int("resultCount", len(rewardResults)),
 	)
 
-	// 分摊满减折扣到各项
-	divideActivityDiscounts := c.Helper.DividePrice(resp.Items, activityDiscount)
-	for i := range resp.Items {
-		if !resp.Items[i].Selected {
-			continue
+	// 每个活动只在匹配该活动的 SKU 之间分摊。
+	for _, result := range rewardResults {
+		indices := make([]int, 0)
+		items := make([]tradeSvc.TradePriceCalculateItemRespBO, 0)
+		for i, item := range resp.Items {
+			if !item.Selected {
+				continue
+			}
+			for _, skuID := range result.SkuIDs {
+				if item.SkuID == skuID {
+					indices = append(indices, i)
+					items = append(items, item)
+					break
+				}
+			}
 		}
-
-		resp.Items[i].DiscountPrice += divideActivityDiscounts[i]
-
-		// 重新计算支付金额
-		c.Helper.RecountPayPrice(&resp.Items[i])
-
-		c.LogCalculation(ctx, req, "分摊满减送折扣",
-			zap.Int64("skuId", resp.Items[i].SkuID),
-			zap.Int("dividedDiscount", divideActivityDiscounts[i]),
-			zap.Int("totalDiscountPrice", resp.Items[i].DiscountPrice),
-		)
+		prices := c.Helper.DividePrice(items, result.TotalDiscount)
+		for i, index := range indices {
+			resp.Items[index].DiscountPrice += prices[i]
+			c.Helper.RecountPayPrice(&resp.Items[index])
+		}
 	}
 
 	// 添加促销活动明细到响应
@@ -100,7 +104,7 @@ func (c *RewardActivityPriceCalculator) Calculate(ctx context.Context, req *trad
 		p := &tradeSvc.TradePriceCalculatePromotionBO{
 			ID:            res.ActivityID,
 			Name:          res.ActivityName,
-			Type:          tradeModel.OrderRewardActivity,
+			Type:          tradeModel.PromotionTypeRewardActivity,
 			TotalPrice:    res.TotalPrice,
 			DiscountPrice: res.TotalDiscount,
 			Match:         true,

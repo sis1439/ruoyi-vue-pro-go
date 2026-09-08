@@ -1,6 +1,6 @@
 package pay
 
-import "time"
+import "github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 type AppPayWalletRechargeCreateReq struct {
 	PayPrice  *int   `json:"payPrice"`
@@ -17,10 +17,10 @@ type AppPayWalletPackageResp struct {
 
 // AppPayWalletTransactionResp 对齐 Java AppPayWalletTransactionRespVO
 type AppPayWalletTransactionResp struct {
-	BizType    int       `json:"bizType"`
-	Price      int64     `json:"price"`
-	Title      string    `json:"title"`
-	CreateTime time.Time `json:"createTime"`
+	BizType    int                `json:"bizType"`
+	Price      int64              `json:"price"`
+	Title      string             `json:"title"`
+	CreateTime types.JsonDateTime `json:"createTime"`
 }
 
 type AppPayWalletResp struct {
@@ -35,16 +35,16 @@ type AppPayWalletRechargeCreateResp struct {
 }
 
 type AppPayWalletRechargeResp struct {
-	ID                     int64      `json:"id"`
-	TotalPrice             int        `json:"totalPrice"`
-	PayPrice               int        `json:"payPrice"`
-	BonusPrice             int        `json:"bonusPrice"`
-	PayChannelCode         string     `json:"payChannelCode"`
-	PayChannelName         string     `json:"payChannelName"`
-	PayOrderID             int64      `json:"payOrderId"`
-	PayOrderChannelOrderNo string     `json:"payOrderChannelOrderNo"`
-	PayTime                *time.Time `json:"payTime"`
-	RefundStatus           int        `json:"refundStatus"`
+	ID                     int64               `json:"id"`
+	TotalPrice             int                 `json:"totalPrice"`
+	PayPrice               int                 `json:"payPrice"`
+	BonusPrice             int                 `json:"bonusPrice"`
+	PayChannelCode         string              `json:"payChannelCode"`
+	PayChannelName         string              `json:"payChannelName"`
+	PayOrderID             int64               `json:"payOrderId"`
+	PayOrderChannelOrderNo string              `json:"payOrderChannelOrderNo"`
+	PayTime                *types.JsonDateTime `json:"payTime"`
+	RefundStatus           int                 `json:"refundStatus"`
 }
 
 type AppPayWalletTransactionSummaryResp struct {

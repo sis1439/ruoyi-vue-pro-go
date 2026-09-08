@@ -54,6 +54,12 @@ func TestPrivateRoutesRejectAnonymous(t *testing.T) {
 	RegisterAppRoutes(router, app)
 	RegisterSystemRoutes(router, system, infra, middleware.NewCasbinMiddleware(nil, nil))
 	paths := []struct{ method, path string }{
+		{"GET", "/app-api/promotion/bargain-help/list?recordId=1"},
+		{"POST", "/app-api/member/social-user/bind"}, {"POST", "/app-api/member/social-user/wxa-qrcode"},
+		{"POST", "/app-api/infra/file/create"}, {"POST", "/app-api/infra/file/upload"}, {"GET", "/app-api/infra/file/presigned-url?name=a.png"},
+		{"PUT", "/app-api/trade/after-sale/delivery"}, {"GET", "/app-api/trade/after-sale-log/list?afterSaleId=1"},
+		{"DELETE", "/app-api/trade/order/delete?id=1"}, {"POST", "/app-api/trade/order/item/create-comment"},
+		{"GET", "/app-api/trade/brokerage-user/get-rank-by-price"}, {"GET", "/app-api/trade/brokerage-user/rank-page-by-price"}, {"GET", "/app-api/trade/brokerage-user/rank-page-by-user-count"},
 		{"GET", "/app-api/member/sign-in/record/get-summary"}, {"GET", "/app-api/member/sign-in/record/page"}, {"POST", "/app-api/member/sign-in/record/create"},
 		{"POST", "/app-api/promotion/kefu-message/send"}, {"PUT", "/app-api/promotion/kefu-message/update-read-status"}, {"GET", "/app-api/promotion/kefu-message/list"},
 		{"GET", "/app-api/pay/order/get?id=1"}, {"POST", "/app-api/pay/order/submit"}, {"GET", "/app-api/pay/wallet/get"}, {"GET", "/app-api/pay/wallet-transaction/page"}, {"GET", "/app-api/pay/wallet-transaction/get-summary"}, {"POST", "/app-api/pay/wallet-recharge/create"}, {"GET", "/app-api/pay/wallet-recharge/page"}, {"GET", "/app-api/pay/transfer/sync?id=1"},

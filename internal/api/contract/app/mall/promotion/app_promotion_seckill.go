@@ -1,6 +1,6 @@
 package promotion
 
-import "time"
+import "github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 // AppSeckillActivityDetailReq App 端 - 秒杀活动详情请求
 type AppSeckillActivityDetailReq struct {
@@ -38,16 +38,16 @@ type AppSeckillActivityResp struct {
 
 // AppSeckillActivityDetailResp App 端 - 秒杀活动详情响应 (对齐 Java: AppSeckillActivityDetailRespVO)
 type AppSeckillActivityDetailResp struct {
-	ID               int64      `json:"id"`
-	Name             string     `json:"name"`
-	Status           int        `json:"status"` // 活动状态
-	SpuID            int64      `json:"spuId"`
-	StartTime        *time.Time `json:"startTime"`
-	EndTime          *time.Time `json:"endTime"`
-	SingleLimitCount int        `json:"singleLimitCount"` // 单次限购
-	TotalLimitCount  int        `json:"totalLimitCount"`  // 总限购
-	Stock            int        `json:"stock"`            // 库存
-	TotalStock       int        `json:"totalStock"`       // 总库存
+	ID               int64               `json:"id"`
+	Name             string              `json:"name"`
+	Status           int                 `json:"status"` // 活动状态
+	SpuID            int64               `json:"spuId"`
+	StartTime        *types.JsonDateTime `json:"startTime"`
+	EndTime          *types.JsonDateTime `json:"endTime"`
+	SingleLimitCount int                 `json:"singleLimitCount"` // 单次限购
+	TotalLimitCount  int                 `json:"totalLimitCount"`  // 总限购
+	Stock            int                 `json:"stock"`            // 库存
+	TotalStock       int                 `json:"totalStock"`       // 总库存
 	// SPU 信息
 	SpuName      string `json:"spuName"`      // 商品名称
 	PicURL       string `json:"picUrl"`       // 商品主图

@@ -158,7 +158,7 @@ func (s *PayRefundService) validatePayOrderCanRefund(ctx context.Context, appId 
 	}
 
 	// Check Status
-	if payOrder.Status != consts.PayOrderStatusSuccess && payOrder.Status != PayOrderStatusRefund {
+	if payOrder.Status != consts.PayOrderStatusSuccess && payOrder.Status != consts.PayOrderStatusRefund {
 		return nil, errors.NewBizError(1006001001, "支付订单状态不对") // PAY_ORDER_STATUS_IS_NOT_SUCCESS
 	}
 

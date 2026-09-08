@@ -301,6 +301,12 @@ func (s *ProductSpuService) GetTabsCount(ctx context.Context) (map[int]int64, er
 func (s *ProductSpuService) GetSpuPageForApp(ctx context.Context, req *product3.AppProductSpuPageReq) (*pagination.PageResult[*product.ProductSpu], error) {
 	u := s.q.ProductSpu
 	q := u.WithContext(ctx).Where(u.Status.Eq(1)) // 上架状态 Status=1
+	if len(req.CategoryIDs) > 0 {
+		q = q.Where(u.CategoryID.In(req.CategoryIDs...))
+	}
+	if len(req.IDs) > 0 {
+		q = q.Where(u.ID.In(req.IDs...))
+	}
 
 	// 处理分类查询：如果指定了分类ID，则包含其子分类
 	if req.CategoryID != nil && *req.CategoryID > 0 {

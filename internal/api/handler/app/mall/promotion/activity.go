@@ -1,6 +1,7 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -49,8 +50,8 @@ func (h *AppActivityHandler) GetActivityListBySpuId(c *gin.Context) {
 			Type:      consts.PromotionTypeCombinationActivity,
 			Name:      combinationActivity.Name,
 			SpuId:     combinationActivity.SpuID,
-			StartTime: &combinationActivity.StartTime,
-			EndTime:   &combinationActivity.EndTime,
+			StartTime: types.ToJsonDateTimePtr(&combinationActivity.StartTime),
+			EndTime:   types.ToJsonDateTimePtr(&combinationActivity.EndTime),
 		})
 	}
 
@@ -62,8 +63,8 @@ func (h *AppActivityHandler) GetActivityListBySpuId(c *gin.Context) {
 			Type:      consts.PromotionTypeSeckillActivity,
 			Name:      seckillActivity.Name,
 			SpuId:     seckillActivity.SpuID,
-			StartTime: &seckillActivity.StartTime,
-			EndTime:   &seckillActivity.EndTime,
+			StartTime: types.ToJsonDateTimePtr(&seckillActivity.StartTime),
+			EndTime:   types.ToJsonDateTimePtr(&seckillActivity.EndTime),
 		})
 	}
 
@@ -75,8 +76,8 @@ func (h *AppActivityHandler) GetActivityListBySpuId(c *gin.Context) {
 			Type:      consts.PromotionTypeBargainActivity,
 			Name:      bargainActivity.Name,
 			SpuId:     bargainActivity.SpuID,
-			StartTime: &bargainActivity.StartTime,
-			EndTime:   &bargainActivity.EndTime,
+			StartTime: types.ToJsonDateTimePtr(&bargainActivity.StartTime),
+			EndTime:   types.ToJsonDateTimePtr(&bargainActivity.EndTime),
 		})
 	}
 

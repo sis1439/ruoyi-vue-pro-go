@@ -28,6 +28,7 @@ var ProviderSet = wire.NewSet(
 	wire.Struct(new(admin.AdminHandlers), "*"),
 
 	// App Providers
+	app.NewSupportHandler,
 	appMall.ProviderSet,
 	appPay.ProviderSet,
 	appMember.ProviderSet,

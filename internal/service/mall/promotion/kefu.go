@@ -2,6 +2,9 @@ package promotion
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
+	tenant "github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"log"
 	"time"
 
@@ -130,7 +133,7 @@ func (s *kefuService) CreateMessage(ctx context.Context, r promotion2.KefuMessag
 		ContentType:    msg.ContentType,
 		Content:        msg.Content,
 		ReadStatus:     false,
-		CreateTime:     msg.CreateTime,
+		CreateTime:     types.ToJsonDateTime(msg.CreateTime),
 	}
 	// 获取发送者头像
 	if senderType == 1 { // Member
@@ -146,14 +149,14 @@ func (s *kefuService) CreateMessage(ctx context.Context, r promotion2.KefuMessag
 	// 发送 WebSocket 通知 (对齐 Java 双重通知机制)
 	if senderType == 2 { // Admin 发送
 		// Java: sendAsyncMessageToMember(conversation.getUserId(), KEFU_MESSAGE_TYPE, message)
-		s.sendKefuMessageNotify(conversation.UserID, 1, "KEFU_MESSAGE", msgResp)
+		s.sendKefuMessageNotify(ctx, conversation.UserID, 1, consts.KefuMessageType, msgResp)
 		// Java: sendAsyncMessageToAdmin(KEFU_MESSAGE_TYPE, message) - 通知所有管理员
-		s.sendKefuMessageNotify(0, 2, "KEFU_MESSAGE", msgResp)
+		s.sendKefuMessageNotify(ctx, 0, 2, consts.KefuMessageType, msgResp)
 	} else { // Member (App) 发送
 		// Java: sendAsyncMessageToAdmin(KEFU_MESSAGE_TYPE, message) - 通知所有管理员
-		s.sendKefuMessageNotify(0, 2, "KEFU_MESSAGE", msgResp)
+		s.sendKefuMessageNotify(ctx, 0, 2, consts.KefuMessageType, msgResp)
 		// Java: sendAsyncMessageToMember(conversation.getUserId(), KEFU_MESSAGE_TYPE, message) - 通知会员自己
-		s.sendKefuMessageNotify(conversation.UserID, 1, "KEFU_MESSAGE", msgResp)
+		s.sendKefuMessageNotify(ctx, conversation.UserID, 1, consts.KefuMessageType, msgResp)
 	}
 
 	return msg.ID, nil
@@ -267,10 +270,10 @@ func (s *kefuService) UpdateMessageReadStatus(ctx context.Context, conversationI
 		}
 
 		// 2.3.1 发送消息通知会员，管理员已读
-		s.sendKefuMessageNotify(memberSentMessage.SenderID, 1, "KEFU_MESSAGE_ADMIN_READ", readNotify)
+		s.sendKefuMessageNotify(ctx, memberSentMessage.SenderID, 1, consts.KefuMessageReadStatusChange, readNotify)
 
 		// 2.3.2 通知所有管理员消息已读
-		s.sendKefuMessageNotify(0, 2, "KEFU_MESSAGE_ADMIN_READ", readNotify)
+		s.sendKefuMessageNotify(ctx, 0, 2, consts.KefuMessageReadStatusChange, readNotify)
 	}
 
 	return nil
@@ -319,7 +322,7 @@ func (s *kefuService) GetMessageList(ctx context.Context, r promotion2.KefuMessa
 			ContentType:    v.ContentType,
 			Content:        v.Content,
 			ReadStatus:     bool(v.ReadStatus),
-			CreateTime:     v.CreateTime,
+			CreateTime:     types.ToJsonDateTime(v.CreateTime),
 		}
 		// 填充 Admin 发送者头像 (对齐 Java Controller 逻辑)
 		if v.SenderType == 2 { // Admin
@@ -352,7 +355,7 @@ func (s *kefuService) GetMessagePage(ctx context.Context, r promotion2.KefuMessa
 			ContentType:    v.ContentType,
 			Content:        v.Content,
 			ReadStatus:     bool(v.ReadStatus),
-			CreateTime:     v.CreateTime,
+			CreateTime:     types.ToJsonDateTime(v.CreateTime),
 		}
 	}
 	return &pagination.PageResult[promotion2.KefuMessageResp]{List: resList, Total: count}, nil
@@ -529,14 +532,18 @@ func (s *kefuService) getOrCreateConversation(ctx context.Context, userID int64)
 // sendKefuMessageNotify 发送 WebSocket 消息通知
 // receiverID: 接收者 ID
 // receiverType: 1=Member, 2=Admin
-// msgType: 消息类型 (e.g., "KEFU_MESSAGE", "KEFU_MESSAGE_ADMIN_READ")
+// msgType: 消息类型，使用 internal/consts 的客服通知常量
 // content: 消息内容
-func (s *kefuService) sendKefuMessageNotify(receiverID int64, receiverType int, msgType string, content interface{}) {
+func (s *kefuService) sendKefuMessageNotify(ctx context.Context, receiverID int64, receiverType int, msgType string, content interface{}) {
 	if s.wsManager == nil {
 		log.Printf("[WebSocket] Manager not initialized, skip notify")
 		return
 	}
 
+	// Only administrator notifications may omit a specific receiver.
+	if receiverID <= 0 && receiverType != consts.UserTypeAdmin {
+		return
+	}
 	// 构建 WebSocket 消息
 	wsMsg, err := websocket.NewMessage(msgType, content)
 	if err != nil {
@@ -550,15 +557,12 @@ func (s *kefuService) sendKefuMessageNotify(receiverID int64, receiverType int, 
 		return
 	}
 
-	// 发送给接收者
-	if receiverID > 0 {
-		s.wsManager.Send(receiverID, msgBytes)
-		log.Printf("[WebSocket] Sent %s to user %d (type=%d)", msgType, receiverID, receiverType)
-	} else if receiverType == 2 {
-		// 广播给所有管理员 (UserType=2)
-		s.wsManager.BroadcastByUserType(2, msgBytes)
-		log.Printf("[WebSocket] Broadcast %s to all admins", msgType)
+	tenantID, ok := tenant.TenantID(ctx)
+	if !ok {
+		log.Printf("[WebSocket] Missing trusted tenant, skip notify")
+		return
 	}
+	s.wsManager.SendToTenant(tenantID, receiverID, receiverType, msgBytes)
 }
 
 // GetConversationByUserId 【会员】获得客服会话 (对齐 Java: getConversationByUserId)

@@ -1,6 +1,8 @@
 package pay
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	adminPay "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
@@ -38,7 +40,7 @@ func (h *AppPayOrderHandler) GetOrder(c *gin.Context) {
 	// 处理 sync 参数
 	sync := c.Query("sync") == "true"
 	order, err := h.svc.GetOrder(c, id)
-	if err == nil && order != nil && sync && order.Status == paySvc.PayOrderStatusWaiting {
+	if err == nil && order != nil && sync && order.Status == consts.PayOrderStatusWaiting {
 		h.svc.SyncOrderQuietlyThrottled(c, id)
 		// 重新拉取
 		order, _ = h.svc.GetOrder(c, id)
@@ -68,14 +70,14 @@ func (h *AppPayOrderHandler) GetOrder(c *gin.Context) {
 		ChannelFeePrice: order.ChannelFeePrice,
 		Status:          order.Status,
 		UserIP:          order.UserIP,
-		ExpireTime:      order.ExpireTime,
-		SuccessTime:     order.SuccessTime,
+		ExpireTime:      types.ToJsonDateTime(order.ExpireTime),
+		SuccessTime:     types.ToJsonDateTimePtr(order.SuccessTime),
 		ExtensionID:     order.ExtensionID,
 		No:              order.No,
 		RefundPrice:     int64(order.RefundPrice),
 		ChannelUserID:   order.ChannelUserID,
 		ChannelOrderNo:  order.ChannelOrderNo,
-		CreateTime:      order.CreateTime,
+		CreateTime:      types.ToJsonDateTime(order.CreateTime),
 		Updater:         order.Updater,
 	}
 

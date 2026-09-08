@@ -8,8 +8,9 @@ import (
 )
 
 type AppHandlers struct {
-	Mall   *mall.Handlers
-	Member *member.Handlers
-	Pay    *pay.Handlers
-	System *system.Handlers
+	Support *SupportHandler
+	Mall    *mall.Handlers
+	Member  *member.Handlers
+	Pay     *pay.Handlers
+	System  *system.Handlers
 }

@@ -12,6 +12,7 @@ type AppMemberUserInfoResp struct {
 	Nickname         string                  `json:"nickname"`
 	Avatar           string                  `json:"avatar"`
 	Mobile           string                  `json:"mobile"`
+	Email            string                  `json:"email"`
 	Sex              int32                   `json:"sex"`
 	Point            int32                   `json:"point"`
 	Experience       int32                   `json:"experience"`
@@ -57,9 +58,10 @@ type MemberUserResp struct {
 }
 
 type AppMemberUserUpdateReq struct {
-	Nickname string `json:"nickname" binding:"required"`
-	Avatar   string `json:"avatar" binding:"required"`
-	Sex      int    `json:"sex" binding:"required"`
+	Nickname *string `json:"nickname"`
+	Avatar   *string `json:"avatar"`
+	Sex      *int    `json:"sex" binding:"omitempty,oneof=0 1 2"`
+	Email    *string `json:"email"`
 }
 
 type AppMemberUserUpdateMobileReq struct {
@@ -75,9 +77,8 @@ type AppMemberUserResetPasswordReq struct {
 }
 
 type AppMemberUserUpdatePasswordReq struct {
-	OldPassword string `json:"oldPassword" binding:"required"`
-	NewPassword string `json:"newPassword" binding:"required"`
-	Code        string `json:"code" binding:"required"`
+	Password string `json:"password" binding:"required,min=4,max=16"`
+	Code     string `json:"code" binding:"required"`
 }
 
 type MemberUserUpdateReq struct {

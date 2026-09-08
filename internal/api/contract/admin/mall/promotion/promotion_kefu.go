@@ -1,6 +1,7 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
@@ -8,6 +9,8 @@ import (
 
 // KefuMessageCreateReq 发送消息请求
 type KefuMessageCreateReq struct {
+	SenderID       int64  `json:"senderId"`
+	SenderType     int    `json:"senderType"`
 	ConversationID int64  `json:"conversationId"`                 // 会话编号 (可选，发送给客服时如果不传，则自动查找或创建)
 	ContentType    int    `json:"contentType" binding:"required"` // 1-文本 2-图片 3-商品 4-订单
 	Content        string `json:"content" binding:"required"`     // 消息内容
@@ -40,17 +43,17 @@ type KeFuConversationUpdatePinnedReq struct {
 
 // KefuMessageResp 客服消息 Response VO
 type KefuMessageResp struct {
-	ID             int64     `json:"id"`
-	ConversationID int64     `json:"conversationId"`
-	ContentType    int       `json:"contentType"`
-	Content        string    `json:"content"`
-	SenderID       int64     `json:"senderId"`
-	SenderType     int       `json:"senderType"`
-	SenderAvatar   string    `json:"senderAvatar"`
-	ReceiverID     int64     `json:"receiverId"`
-	ReceiverType   int       `json:"receiverType"`
-	ReadStatus     bool      `json:"readStatus"`
-	CreateTime     time.Time `json:"createTime"`
+	ID             int64              `json:"id"`
+	ConversationID int64              `json:"conversationId"`
+	ContentType    int                `json:"contentType"`
+	Content        string             `json:"content"`
+	SenderID       int64              `json:"senderId"`
+	SenderType     int                `json:"senderType"`
+	SenderAvatar   string             `json:"senderAvatar"`
+	ReceiverID     int64              `json:"receiverId"`
+	ReceiverType   int                `json:"receiverType"`
+	ReadStatus     bool               `json:"readStatus"`
+	CreateTime     types.JsonDateTime `json:"createTime"`
 }
 
 // KefuConversationResp 客服会话 Response VO

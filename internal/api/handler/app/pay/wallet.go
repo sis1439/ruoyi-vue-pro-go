@@ -8,6 +8,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/response"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -119,7 +120,7 @@ func (h *AppPayWalletHandler) GetRechargePage(c *gin.Context) {
 		}
 		if order, ok := payOrderMap[item.PayOrderID]; ok {
 			r.PayChannelCode = order.ChannelCode
-			r.PayTime = order.SuccessTime
+			r.PayTime = types.ToJsonDateTimePtr(order.SuccessTime)
 			r.PayOrderChannelOrderNo = order.ChannelOrderNo
 			// 暂未实现 channelName 映射，可通过 ChannelCode 简单展示
 			r.PayChannelName = order.ChannelCode

@@ -1,6 +1,7 @@
 package member
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"strconv"
 
 	system2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/system"
@@ -28,7 +29,7 @@ func (h *AppSocialUserHandler) Bind(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetInt64("userId")
+	userID := context.GetUserId(c)
 	openid, err := h.svc.BindSocialUser(c, userID, consts.UserTypeMember, &system2.SocialUserBindReq{
 		Type:  r.Type,
 		Code:  r.Code,
@@ -51,7 +52,7 @@ func (h *AppSocialUserHandler) Unbind(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetInt64("userId")
+	userID := context.GetUserId(c)
 	err := h.svc.UnbindSocialUser(c, userID, consts.UserTypeMember, r.Type, r.OpenID)
 	if err != nil {
 		response.WriteBizError(c, err)
@@ -66,7 +67,7 @@ func (h *AppSocialUserHandler) Unbind(c *gin.Context) {
 func (h *AppSocialUserHandler) Get(c *gin.Context) {
 	socialTypeStr := c.Query("type")
 	socialType, _ := strconv.Atoi(socialTypeStr)
-	userID := c.GetInt64("userId")
+	userID := context.GetUserId(c)
 
 	socialUsers, err := h.svc.GetSocialUserList(c, userID, consts.UserTypeMember)
 	if err != nil {

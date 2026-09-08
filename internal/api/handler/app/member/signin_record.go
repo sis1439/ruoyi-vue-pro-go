@@ -8,6 +8,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/response"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -49,7 +50,7 @@ func (h *AppMemberSignInRecordHandler) CreateSignInRecord(c *gin.Context) {
 		Day:        record.Day,
 		Point:      record.Point,
 		Experience: record.Experience,
-		CreateTime: record.CreateTime,
+		CreateTime: types.ToJsonDateTime(record.CreateTime),
 	})
 }
 
@@ -83,7 +84,7 @@ func (h *AppMemberSignInRecordHandler) GetSignInRecordPage(c *gin.Context) {
 			Day:        item.Day,
 			Point:      item.Point,
 			Experience: item.Experience,
-			CreateTime: item.CreateTime,
+			CreateTime: types.ToJsonDateTime(item.CreateTime),
 		}
 	})
 	response.WriteSuccess(c, pagination.NewPageResult(respList, pageResult.Total))

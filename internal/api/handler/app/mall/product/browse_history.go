@@ -6,6 +6,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/response"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -51,6 +52,7 @@ func (h *AppProductBrowseHistoryHandler) GetBrowseHistoryPage(c *gin.Context) {
 		return
 	}
 	userId := context.GetLoginUserID(c)
+	r.CreateTime = types.QueryTimeRange(c.Request.URL.Query(), "createTime")
 	res, err := h.svc.GetAppBrowseHistoryPage(c, userId, &r)
 	if err != nil {
 		response.WriteBizError(c, err)

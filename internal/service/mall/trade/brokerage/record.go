@@ -3,6 +3,7 @@ package brokerage
 import (
 	"context"
 	"errors"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strings"
 	"time"
 
@@ -187,8 +188,7 @@ func (s *BrokerageRecordService) ReduceBrokerageForWithdraw(ctx context.Context,
 // CalculateProductBrokeragePrice 计算商品佣金
 func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Context, userId int64, spuId int64) (*trade.AppBrokerageProductPriceRespVO, error) {
 	resp := &trade.AppBrokerageProductPriceRespVO{
-		BrokerageEnabled: false,
-		BrokeragePrice:   0,
+		Enabled: false,
 	}
 
 	// 1. 校验分销功能是否开启
@@ -202,7 +202,7 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 	if err != nil || user == nil || !user.BrokerageEnabled {
 		return resp, nil
 	}
-	resp.BrokerageEnabled = true
+	resp.Enabled = true
 
 	// 3. 校验商品是否存在
 	spu, err := s.spuSvc.GetSpu(ctx, spuId)
@@ -220,7 +220,7 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 	maxPrice := 0
 	percent := config.BrokerageFirstPercent
 
-	for _, sku := range skus {
+	for i, sku := range skus {
 		var brokeragePrice int
 		if spu.SubCommissionType {
 			// 商品单独分佣模式：使用 SKU 的固定佣金
@@ -230,7 +230,7 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 			brokeragePrice = sku.Price * percent / 100
 		}
 
-		if minPrice == 0 || brokeragePrice < minPrice {
+		if i == 0 || brokeragePrice < minPrice {
 			minPrice = brokeragePrice
 		}
 		if brokeragePrice > maxPrice {
@@ -238,8 +238,8 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 		}
 	}
 
-	// 使用最大佣金作为展示值
-	resp.BrokeragePrice = maxPrice
+	resp.BrokerageMinPrice = minPrice
+	resp.BrokerageMaxPrice = maxPrice
 
 	return resp, nil
 }
@@ -247,10 +247,9 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 // GetBrokerageUserRankPageByPrice 获得分销用户排行分页（基于佣金）
 func (s *BrokerageRecordService) GetBrokerageUserRankPageByPrice(ctx context.Context, r *trade2.AppBrokerageUserRankPageReq) (*pagination.PageResult[*trade.AppBrokerageUserRankByPriceRespVO], error) {
 	// 解析时间范围
-	var beginTime, endTime time.Time
-	if len(r.Times) >= 2 {
-		beginTime = parseTime(r.Times[0])
-		endTime = parseTime(r.Times[1])
+	beginTime, endTime, err := types.ParseTimeRange(r.Times)
+	if err != nil {
+		return nil, err
 	}
 
 	// 使用 Gen 生成的字段和表名
@@ -332,32 +331,16 @@ func (s *BrokerageRecordService) GetUserRankByPrice(ctx context.Context, userId 
 		return 0, err
 	}
 
-	// 使用 Gen 生成的字段和表名
+	// Count grouped users through the tenant-scoped model, without a derived table.
 	br := s.q.BrokerageRecord
-	tableName := br.TableName()
-	userIDCol := br.UserID.ColumnName().String()
-	priceCol := br.Price.ColumnName().String()
-	bizTypeCol := br.BizType.ColumnName().String()
-	statusCol := br.Status.ColumnName().String()
-	createTimeCol := br.CreateTime.ColumnName().String()
-
-	// 2. 获取比用户佣金高的用户数量
-	db := br.WithContext(ctx).UnderlyingDB()
-
-	// 子查询：获取每个用户的佣金总额大于当前用户的数量
-	subQuery := db.Table(tableName).
-		Select(userIDCol+", SUM("+priceCol+") as total_price").
-		Where(bizTypeCol+" = ? AND "+statusCol+" = ?", tradeModel.BrokerageRecordBizTypeOrder, tradeModel.BrokerageRecordStatusSettlement).
-		Where("deleted = 0")
+	ranked := br.WithContext(ctx).Where(br.BizType.Eq(tradeModel.BrokerageRecordBizTypeOrder), br.Status.Eq(tradeModel.BrokerageRecordStatusSettlement))
 	if !beginTime.IsZero() && !endTime.IsZero() {
-		subQuery = subQuery.Where(createTimeCol+" BETWEEN ? AND ?", beginTime, endTime)
+		ranked = ranked.Where(br.CreateTime.Between(beginTime, endTime))
 	}
-	subQuery = subQuery.Group(userIDCol).Having("SUM("+priceCol+") > ?", userPrice)
-
-	var greaterCount int64
-	db.Table("(?) as ranked", subQuery).Count(&greaterCount)
-
-	// 3. 返回排名 (比自己高的人数 + 1)
+	greaterCount, err := ranked.Group(br.UserID).Having(br.Price.Sum().Gt(userPrice)).Count()
+	if err != nil {
+		return 0, err
+	}
 	return int(greaterCount) + 1, nil
 }
 
@@ -366,8 +349,8 @@ func (s *BrokerageRecordService) GetUserRankByPrice(ctx context.Context, userId 
 type BrokerageAddReqBO struct {
 	BizID            string // 业务编号
 	BasePrice        int    // 分佣基础价格
-	FirstFixedPrice  int    // 一级固定佣金
-	SecondFixedPrice int    // 二级固定佣金
+	FirstFixedPrice  *int   // 一级固定佣金
+	SecondFixedPrice *int   // 二级固定佣金
 	Title            string // 标题
 	SourceUserId     int64  // 来源用户编号（下单用户）
 }
@@ -424,7 +407,7 @@ func (s *BrokerageRecordService) addBrokerageForLevel(ctx context.Context, user 
 
 	for _, item := range list {
 		// 计算佣金金额
-		var fixedPrice int
+		var fixedPrice *int
 		if level == 1 {
 			fixedPrice = item.FirstFixedPrice
 		} else {
@@ -476,9 +459,12 @@ func (s *BrokerageRecordService) addBrokerageForLevel(ctx context.Context, user 
 }
 
 // calculatePrice 计算佣金价格
-func (s *BrokerageRecordService) calculatePrice(basePrice int, percent int, fixedPrice int) int {
-	if fixedPrice > 0 {
-		return fixedPrice
+func (s *BrokerageRecordService) calculatePrice(basePrice int, percent int, fixedPrice *int) int {
+	if fixedPrice != nil && *fixedPrice >= 0 {
+		return *fixedPrice
+	}
+	if basePrice <= 0 || percent <= 0 {
+		return 0
 	}
 	return basePrice * percent / 100
 }

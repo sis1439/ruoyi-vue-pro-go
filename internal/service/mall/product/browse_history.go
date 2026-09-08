@@ -2,6 +2,7 @@ package product
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	product2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
@@ -135,8 +136,15 @@ func (s *ProductBrowseHistoryService) GetBrowseHistoryPage(ctx context.Context, 
 func (s *ProductBrowseHistoryService) GetAppBrowseHistoryPage(ctx context.Context, userId int64, r *product2.AppProductBrowseHistoryPageReq) (*pagination.PageResult[product2.AppProductBrowseHistoryResp], error) {
 	h := s.q.ProductBrowseHistory
 	q := h.WithContext(ctx).Where(h.UserID.Eq(userId)).Where(h.UserDeleted.Eq(model.BitBool(false)))
+	if len(r.CreateTime) > 0 {
+		start, end, err := types.ParseTimeRange(r.CreateTime)
+		if err != nil {
+			return nil, err
+		}
+		q = q.Where(h.CreateTime.Between(start, end))
+	}
 
-	list, total, err := q.Order(h.UpdateTime.Desc()).FindByPage(r.PageNo, r.PageSize)
+	list, total, err := q.Order(h.UpdateTime.Desc()).FindByPage(r.GetOffset(), r.GetLimit())
 	if err != nil {
 		return nil, err
 	}

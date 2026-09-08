@@ -1,6 +1,7 @@
 package trade
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
@@ -9,10 +10,8 @@ import (
 
 type AppAfterSaleCreateReq struct {
 	OrderItemID      int64    `json:"orderItemId" binding:"required"`
-	RefundPrice      int      `json:"refundPrice" binding:"required"`
-	Count            int      `json:"count" binding:"required"`
-	Way              int      `json:"way" binding:"required"`  // 10: Refund only, 20: Return & Refund
-	Type             int      `json:"type" binding:"required"` // 10: Want refund, 20: Not received
+	RefundPrice      *int     `json:"refundPrice" binding:"required,gte=0"`
+	Way              int      `json:"way" binding:"required"` // 10: Refund only, 20: Return & Refund
 	ApplyReason      string   `json:"applyReason" binding:"required"`
 	ApplyDescription string   `json:"applyDescription"`
 	ApplyPicURLs     []string `json:"applyPicUrls"`
@@ -24,12 +23,12 @@ type AppAfterSaleCancelReq struct {
 
 type AppAfterSalePageReq struct {
 	pagination.PageParam
-	Status *int `form:"status"`
+	Statuses []int `form:"statuses" collection_format:"csv"`
 }
 
 type AppAfterSaleDeliveryReq struct {
 	ID          int64  `json:"id" binding:"required"`
-	LogisticsId int64  `json:"logisticsId" binding:"required"`
+	LogisticsId *int64 `json:"logisticsId" binding:"required,gte=0"`
 	LogisticsNo string `json:"logisticsNo" binding:"required"`
 }
 
@@ -84,15 +83,15 @@ type AppAfterSaleResp struct {
 	RefundPrice      int                              `json:"refundPrice"`
 	AuditUserID      int64                            `json:"auditUserId"`
 	AuditReason      string                           `json:"auditReason"`
-	AuditTime        *time.Time                       `json:"auditTime"`
+	AuditTime        *types.JsonDateTime              `json:"auditTime"`
 	LogisticsID      int64                            `json:"logisticsId"`
 	LogisticsNo      string                           `json:"logisticsNo"`
-	DeliveryTime     *time.Time                       `json:"deliveryTime"`
-	ReceiveTime      *time.Time                       `json:"receiveTime"`
+	DeliveryTime     *types.JsonDateTime              `json:"deliveryTime"`
+	ReceiveTime      *types.JsonDateTime              `json:"receiveTime"`
 	ReceiveReason    string                           `json:"receiveReason"`
-	RefundTime       *time.Time                       `json:"refundTime"`
-	CreateTime       time.Time                        `json:"createTime"`
-	UpdateTime       time.Time                        `json:"updateTime"`
+	RefundTime       *types.JsonDateTime              `json:"refundTime"`
+	CreateTime       types.JsonDateTime               `json:"createTime"`
+	UpdateTime       types.JsonDateTime               `json:"updateTime"`
 }
 
 // AfterSalePageItemResp 售后分页项 Response

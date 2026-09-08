@@ -2,6 +2,7 @@ package trade
 
 import (
 	"context"
+	pkgconfig "github.com/wxlbd/ruoyi-mall-go/pkg/config"
 
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
@@ -72,7 +73,7 @@ func (s *TradeConfigService) GetAppTradeConfig(ctx context.Context) (*trade2.App
 
 	// 转换响应结构（对齐 Java: TradeConfigConvert.convert02）
 	return &trade2.AppTradeConfigResp{
-		TencentLbsKey:             "", // 待补全
+		TencentLbsKey:             pkgconfig.C.Trade.TencentLbsKey,
 		DeliveryPickUpEnabled:     bool(config.DeliveryPickUpEnabled),
 		AfterSaleRefundReasons:    []string(config.AfterSaleRefundReasons),
 		AfterSaleReturnReasons:    []string(config.AfterSaleReturnReasons),

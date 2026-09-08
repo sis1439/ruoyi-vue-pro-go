@@ -2,6 +2,7 @@ package promotion
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	adminProduct "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	promotion2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/promotion"
@@ -146,11 +147,17 @@ func (h *AppBargainRecordHandler) GetBargainRecordDetail(c *gin.Context) {
 		res.BargainFirstPrice = record.BargainFirstPrice
 		res.BargainPrice = record.BargainPrice
 		res.Status = record.Status
-		res.EndTime = record.EndTime
+		res.EndTime = types.ToJsonDateTime(record.EndTime)
 		// Order Info
 		if record.OrderID > 0 {
 			res.OrderID = &record.OrderID
-			// TODO: PayStatus and PayOrderId
+			order, err := h.orderSvc.GetOrder(c, record.OrderID)
+			if err != nil {
+				response.WriteBizError(c, err)
+				return
+			}
+			res.PayOrderID = order.PayOrderID
+			res.PayStatus = bool(order.PayStatus)
 		}
 	}
 
@@ -232,10 +239,17 @@ func (h *AppBargainRecordHandler) GetBargainRecordPage(c *gin.Context) {
 			ActivityID:   r.ActivityID,
 			Status:       r.Status,
 			BargainPrice: r.BargainPrice,
-			EndTime:      r.EndTime,
+			EndTime:      types.ToJsonDateTime(r.EndTime),
 		}
 		if r.OrderID > 0 {
 			item.OrderID = &r.OrderID
+			order, err := h.orderSvc.GetOrder(c, r.OrderID)
+			if err != nil {
+				response.WriteBizError(c, err)
+				return
+			}
+			item.PayOrderID = order.PayOrderID
+			item.PayStatus = bool(order.PayStatus)
 		}
 		if a, ok := activityMap[r.ActivityID]; ok {
 			item.ActivityName = a.Name

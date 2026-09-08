@@ -2,7 +2,10 @@ package member
 
 import (
 	"context"
+	stderrors "errors"
 	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
+	"gorm.io/gorm"
 	"strings"
 
 	member2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
@@ -210,7 +213,11 @@ func (s *MemberAuthService) SocialLogin(ctx context.Context, r *member2.AppAuthS
 
 // SendSmsCode 发送验证码
 func (s *MemberAuthService) SendSmsCode(ctx context.Context, r *member2.AppAuthSmsSendReq, createIp string) error {
-	return s.smsCodeSvc.SendSmsCode(ctx, r.Mobile, int32(r.Scene), createIp)
+	mobile, err := s.smsMobile(ctx, r.Mobile, r.Scene)
+	if err != nil {
+		return err
+	}
+	return s.smsCodeSvc.SendSmsCode(ctx, mobile, int32(r.Scene), createIp)
 }
 
 // ValidateSmsCode 校验验证码
@@ -244,7 +251,7 @@ func (s *MemberAuthService) RefreshToken(ctx context.Context, refreshToken, ip, 
 	if err != nil {
 		return nil, err
 	}
-	return &member2.AppAuthLoginResp{UserID: user.ID, AccessToken: tokenDO.AccessToken, RefreshToken: tokenDO.RefreshToken, ExpiresTime: tokenDO.ExpiresTime}, nil
+	return &member2.AppAuthLoginResp{UserID: user.ID, AccessToken: tokenDO.AccessToken, RefreshToken: tokenDO.RefreshToken, ExpiresTime: types.ToJsonDateTime(tokenDO.ExpiresTime)}, nil
 }
 
 // Logout 退出登录
@@ -291,7 +298,7 @@ func (s *MemberAuthService) createToken(ctx context.Context, user *member.Member
 		UserID:       user.ID,
 		AccessToken:  tokenDO.AccessToken,
 		RefreshToken: tokenDO.RefreshToken,
-		ExpiresTime:  tokenDO.ExpiresTime,
+		ExpiresTime:  types.ToJsonDateTime(tokenDO.ExpiresTime),
 		OpenID:       openid,
 	}, nil
 }
@@ -343,4 +350,43 @@ func (s *MemberAuthService) CreateWeixinMpJsapiSignature(ctx context.Context, ur
 		URL:       signature.URL,
 		Signature: signature.Signature,
 	}, nil
+}
+
+// smsMobile resolves the password-change destination from trusted identity before sending.
+func (s *MemberAuthService) smsMobile(ctx context.Context, mobile string, scene int) (string, error) {
+	if scene < 1 || scene > 4 {
+		return "", system.ErrSmsSceneInvalid
+	}
+	identity := pkgContext.GetLoginUserFromContext(ctx)
+	var userID int64
+	if identity != nil && identity.UserType == consts.UserTypeMember {
+		userID = identity.UserID
+	}
+	if scene == int(system.SmsSceneMemberUpdatePwd.Scene) {
+		if userID == 0 {
+			return "", errors.ErrUnauthorized
+		}
+		user, err := s.userSvc.GetUser(ctx, userID)
+		if err != nil {
+			return "", err
+		}
+		mobile = user.Mobile
+	}
+	if len(mobile) != 11 || strings.IndexFunc(mobile, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return "", member.ErrMobileFormatInvalid
+	}
+	if scene == int(system.SmsSceneMemberUpdateMob.Scene) || scene == int(system.SmsSceneMemberResetPwd.Scene) {
+		u := s.repo.MemberUser
+		user, err := u.WithContext(ctx).Where(u.Mobile.Eq(mobile)).First()
+		if err != nil && !stderrors.Is(err, gorm.ErrRecordNotFound) {
+			return "", err
+		}
+		if scene == int(system.SmsSceneMemberUpdateMob.Scene) && user != nil && user.ID != userID {
+			return "", errors.NewBizError(1004003007, "手机号已经被使用")
+		}
+		if scene == int(system.SmsSceneMemberResetPwd.Scene) && user == nil {
+			return "", errors.NewBizError(1004001001, "手机号未注册用户")
+		}
+	}
+	return mobile, nil
 }

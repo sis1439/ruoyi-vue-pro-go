@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"net/url"
 	"strconv"
 	"time"
@@ -186,7 +187,7 @@ func (h *SmsTemplateHandler) SendSms(c *gin.Context) {
 
 	// 从 Context 获取当前登录用户 ID
 	ctx := c.Request.Context()
-	userId := getLoginUserID(c)
+	userId := context.GetUserId(c)
 
 	logId, err := h.smsSendSvc.SendSingleSmsToAdmin(ctx, req.Mobile, userId, req.TemplateCode, req.TemplateParams)
 	if err != nil {
@@ -194,16 +195,4 @@ func (h *SmsTemplateHandler) SendSms(c *gin.Context) {
 		return
 	}
 	response.WriteSuccess(c, logId)
-}
-
-// getLoginUserID 从 Context 获取当前登录用户 ID
-func getLoginUserID(c *gin.Context) int64 {
-	// 首先尝试从 Gin Context 中获取
-	if v, exists := c.Get("userID"); exists {
-		if id, ok := v.(int64); ok {
-			return id
-		}
-	}
-	// 如果没有找到，返回 0（表示未登录或取不到用户ID）
-	return 0
 }

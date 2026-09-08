@@ -1,6 +1,7 @@
 package product
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
@@ -60,10 +61,10 @@ type ProductFavoriteResp struct {
 
 // AppFavoriteResp App 商品收藏响应
 type AppFavoriteResp struct {
-	ID         int64     `json:"id"`
-	SpuID      int64     `json:"spuId"`
-	CreateTime time.Time `json:"createTime"`
-	SpuName    string    `json:"spuName"`
-	PicURL     string    `json:"picUrl"`
-	Price      int64     `json:"price"`
+	ID         int64              `json:"id"`
+	SpuID      int64              `json:"spuId"`
+	CreateTime types.JsonDateTime `json:"createTime"`
+	SpuName    string             `json:"spuName"`
+	PicURL     string             `json:"picUrl"`
+	Price      int64              `json:"price"`
 }

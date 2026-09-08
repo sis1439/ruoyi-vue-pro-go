@@ -5,117 +5,115 @@ import (
 )
 
 // 交易模块错误码定义 (对齐 Java ErrorCodeConstants)
-// 错误码格式: 1004XXXYYY
-// - 1004: 业务模块前缀
-// - XXX: 子模块编号 (003=价格计算, 004=订单操作, 005=售后, 006=购物车)
-// - YYY: 具体错误编号
+// Java 已定义的业务条件沿用 1-011 对应错误码。
+// Go 独有的通用错误使用 1-011-900-xxx 扩展段，避免与 Java 具体业务条件撞码。
 
 const (
-	// ========== 价格计算相关错误码 (1004003xxx) ==========
+	// ========== 价格计算相关错误码 ==========
 
-	// 价格计算基础错误 (1004003000-1004003099)
-	ErrorCodePriceCalculateError     = 1004003000 // 价格计算失败
-	ErrorCodePriceCalculateItemEmpty = 1004003001 // 价格计算商品为空
-	ErrorCodePriceCalculateItemError = 1004003002 // 价格计算商品错误
-	ErrorCodePriceCalculateUserError = 1004003003 // 价格计算用户错误
+	// 价格计算基础错误 (1011900000-1011904099)
+	ErrorCodePriceCalculateError     = 1011900000 // 价格计算失败
+	ErrorCodePriceCalculateItemEmpty = 1011900001 // 价格计算商品为空
+	ErrorCodePriceCalculateItemError = 1011900002 // 价格计算商品错误
+	ErrorCodePriceCalculateUserError = 1011900003 // 价格计算用户错误
 
-	// 商品相关错误 (1004003100-1004003199)
-	ErrorCodeProductNotExists      = 1004003100 // 商品不存在
-	ErrorCodeProductNotEnable      = 1004003101 // 商品未启用
-	ErrorCodeProductStockNotEnough = 1004003102 // 商品库存不足
-	ErrorCodeProductSkuNotExists   = 1004003103 // 商品SKU不存在
-	ErrorCodeProductSkuNotEnable   = 1004003104 // 商品SKU未启用
+	// 商品相关错误 (1011900004-1011904199)
+	ErrorCodeProductNotExists      = 1011900004 // 商品不存在
+	ErrorCodeProductNotEnable      = 1011900005 // 商品未启用
+	ErrorCodeProductStockNotEnough = 1011900006 // 商品库存不足
+	ErrorCodeProductSkuNotExists   = 1011900007 // 商品SKU不存在
+	ErrorCodeProductSkuNotEnable   = 1011900008 // 商品SKU未启用
 
-	// 优惠券相关错误 (1004003200-1004003299)
-	ErrorCodeCouponNotExists = 1004003200 // 优惠券不存在
-	ErrorCodeCouponNotMatch  = 1004003201 // 优惠券不匹配
-	ErrorCodeCouponUsed      = 1004003202 // 优惠券已使用
-	ErrorCodeCouponExpired   = 1004003203 // 优惠券已过期
-	ErrorCodeCouponNotStart  = 1004003204 // 优惠券未开始
-	ErrorCodeCouponNotEnough = 1004003205 // 优惠券数量不足
+	// 优惠券相关错误 (1011900009-1011904299)
+	ErrorCodeCouponNotExists = 1011900009 // 优惠券不存在
+	ErrorCodeCouponNotMatch  = 1011900010 // 优惠券不匹配
+	ErrorCodeCouponUsed      = 1011900011 // 优惠券已使用
+	ErrorCodeCouponExpired   = 1011900012 // 优惠券已过期
+	ErrorCodeCouponNotStart  = 1011900013 // 优惠券未开始
+	ErrorCodeCouponNotEnough = 1011900014 // 优惠券数量不足
 
-	// 积分相关错误 (1004003300-1004003399)
-	ErrorCodePointNotEnough      = 1004003300 // 积分不足
-	ErrorCodePointCalculateError = 1004003301 // 积分计算错误
+	// 积分相关错误 (1011000038-1011904399)
+	ErrorCodePointNotEnough      = 1011000038 // 积分不足
+	ErrorCodePointCalculateError = 1011900015 // 积分计算错误
 
-	// 活动相关错误 (1004003400-1004003499)
-	ErrorCodeActivityNotExists      = 1004003400 // 活动不存在
-	ErrorCodeActivityNotStart       = 1004003401 // 活动未开始
-	ErrorCodeActivityExpired        = 1004003402 // 活动已结束
-	ErrorCodeActivityNotMatch       = 1004003403 // 活动不匹配
-	ErrorCodeActivityStockNotEnough = 1004003404 // 活动库存不足
+	// 活动相关错误 (1011900016-1011904499)
+	ErrorCodeActivityNotExists      = 1011900016 // 活动不存在
+	ErrorCodeActivityNotStart       = 1011900017 // 活动未开始
+	ErrorCodeActivityExpired        = 1011900018 // 活动已结束
+	ErrorCodeActivityNotMatch       = 1011900019 // 活动不匹配
+	ErrorCodeActivityStockNotEnough = 1011900020 // 活动库存不足
 
-	// 运费相关错误 (1004003500-1004003599)
-	ErrorCodeDeliveryNotSupport        = 1004003500 // 不支持配送
-	ErrorCodeDeliveryTemplateNotExists = 1004003501 // 运费模板不存在
-	ErrorCodeDeliveryCalculateError    = 1004003502 // 运费计算错误
+	// 运费相关错误 (1011003005-1011904599)
+	ErrorCodeDeliveryNotSupport        = 1011003005 // 不支持配送
+	ErrorCodeDeliveryTemplateNotExists = 1011003001 // 运费模板不存在
+	ErrorCodeDeliveryCalculateError    = 1011900021 // 运费计算错误
 
-	// ========== 订单操作相关错误码 (1004004xxx) ==========
+	// ========== 订单操作相关错误码 ==========
 
-	// 订单基础错误 (1004004000-1004004099)
-	ErrorCodeOrderNotExists    = 1004004000 // 订单不存在
-	ErrorCodeOrderStatusError  = 1004004001 // 订单状态错误
-	ErrorCodeOrderUserNotMatch = 1004004002 // 订单用户不匹配
-	ErrorCodeOrderCreateError  = 1004004003 // 订单创建失败
-	ErrorCodeOrderUpdateError  = 1004004004 // 订单更新失败
-	ErrorCodeOrderDeleteError  = 1004004005 // 订单删除失败
+	// 订单基础错误 (1011000011-1011905099)
+	ErrorCodeOrderNotExists    = 1011000011 // 订单不存在
+	ErrorCodeOrderStatusError  = 1011900022 // 订单状态错误
+	ErrorCodeOrderUserNotMatch = 1011900023 // 订单用户不匹配
+	ErrorCodeOrderCreateError  = 1011900024 // 订单创建失败
+	ErrorCodeOrderUpdateError  = 1011900025 // 订单更新失败
+	ErrorCodeOrderDeleteError  = 1011000029 // 订单删除失败
 
-	// 订单支付相关错误 (1004004100-1004004199)
-	ErrorCodeOrderNotPaid        = 1004004100 // 订单未支付
-	ErrorCodeOrderAlreadyPaid    = 1004004101 // 订单已支付
-	ErrorCodeOrderPayError       = 1004004102 // 订单支付失败
-	ErrorCodeOrderPayTimeout     = 1004004103 // 订单支付超时
-	ErrorCodeOrderPayAmountError = 1004004104 // 订单支付金额错误
+	// 订单支付相关错误 (1011900026-1011905199)
+	ErrorCodeOrderNotPaid        = 1011900026 // 订单未支付
+	ErrorCodeOrderAlreadyPaid    = 1011900027 // 订单已支付
+	ErrorCodeOrderPayError       = 1011900028 // 订单支付失败
+	ErrorCodeOrderPayTimeout     = 1011900029 // 订单支付超时
+	ErrorCodeOrderPayAmountError = 1011000016 // 订单支付金额错误
 
-	// 订单发货相关错误 (1004004200-1004004299)
-	ErrorCodeOrderNotDelivered     = 1004004200 // 订单未发货
-	ErrorCodeOrderAlreadyDelivered = 1004004201 // 订单已发货
-	ErrorCodeOrderDeliveryError    = 1004004202 // 订单发货失败
-	ErrorCodeOrderLogisticsError   = 1004004203 // 物流信息错误
+	// 订单发货相关错误 (1011000018-1011905299)
+	ErrorCodeOrderNotDelivered     = 1011000018 // 订单未发货
+	ErrorCodeOrderAlreadyDelivered = 1011900030 // 订单已发货
+	ErrorCodeOrderDeliveryError    = 1011900031 // 订单发货失败
+	ErrorCodeOrderLogisticsError   = 1011900032 // 物流信息错误
 
-	// 订单收货相关错误 (1004004300-1004004399)
-	ErrorCodeOrderNotReceived     = 1004004300 // 订单未收货
-	ErrorCodeOrderAlreadyReceived = 1004004301 // 订单已收货
-	ErrorCodeOrderReceiveError    = 1004004302 // 订单收货失败
+	// 订单收货相关错误 (1011900033-1011905399)
+	ErrorCodeOrderNotReceived     = 1011900033 // 订单未收货
+	ErrorCodeOrderAlreadyReceived = 1011900034 // 订单已收货
+	ErrorCodeOrderReceiveError    = 1011900035 // 订单收货失败
 
-	// 订单取消相关错误 (1004004400-1004004499)
-	ErrorCodeOrderNotCanceled     = 1004004400 // 订单未取消
-	ErrorCodeOrderAlreadyCanceled = 1004004401 // 订单已取消
-	ErrorCodeOrderCancelError     = 1004004402 // 订单取消失败
-	ErrorCodeOrderCancelNotAllow  = 1004004403 // 订单不允许取消
+	// 订单取消相关错误 (1011900036-1011905499)
+	ErrorCodeOrderNotCanceled     = 1011900036 // 订单未取消
+	ErrorCodeOrderAlreadyCanceled = 1011900037 // 订单已取消
+	ErrorCodeOrderCancelError     = 1011900038 // 订单取消失败
+	ErrorCodeOrderCancelNotAllow  = 1011000025 // 订单不允许取消
 
-	// 订单退款相关错误 (1004004500-1004004599)
-	ErrorCodeOrderRefundError       = 1004004500 // 订单退款失败
-	ErrorCodeOrderRefundAmountError = 1004004501 // 退款金额错误
-	ErrorCodeOrderRefundNotAllow    = 1004004502 // 订单不允许退款
+	// 订单退款相关错误 (1011900039-1011905599)
+	ErrorCodeOrderRefundError       = 1011900039 // 订单退款失败
+	ErrorCodeOrderRefundAmountError = 1011900040 // 退款金额错误
+	ErrorCodeOrderRefundNotAllow    = 1011900041 // 订单不允许退款
 
-	// 订单核销相关错误 (1004004600-1004004699)
-	ErrorCodeOrderPickUpError     = 1004004600 // 订单核销失败
-	ErrorCodeOrderNotPickUp       = 1004004601 // 非自提订单
-	ErrorCodeOrderPickUpCodeError = 1004004602 // 核销码错误
-	ErrorCodeOrderAlreadyPickUp   = 1004004603 // 订单已核销
+	// 订单核销相关错误 (1011900042-1011905699)
+	ErrorCodeOrderPickUpError     = 1011900042 // 订单核销失败
+	ErrorCodeOrderNotPickUp       = 1011000030 // 非自提订单
+	ErrorCodeOrderPickUpCodeError = 1011900043 // 核销码错误
+	ErrorCodeOrderAlreadyPickUp   = 1011900044 // 订单已核销
 
-	// 订单评价相关错误 (1004004700-1004004799)
-	ErrorCodeOrderCommentError    = 1004004700 // 订单评价失败
-	ErrorCodeOrderAlreadyComment  = 1004004701 // 订单已评价
-	ErrorCodeOrderCommentNotAllow = 1004004702 // 订单不允许评价
+	// 订单评价相关错误 (1011900045-1011905799)
+	ErrorCodeOrderCommentError    = 1011900045 // 订单评价失败
+	ErrorCodeOrderAlreadyComment  = 1011000020 // 订单已评价
+	ErrorCodeOrderCommentNotAllow = 1011000019 // 订单不允许评价
 
-	// ========== 售后相关错误码 (1004005xxx) ==========
+	// ========== 售后相关错误码 ==========
 
-	// 售后基础错误 (1004005000-1004005099)
-	ErrorCodeAfterSaleNotExists   = 1004005000 // 售后单不存在
-	ErrorCodeAfterSaleStatusError = 1004005001 // 售后单状态错误
-	ErrorCodeAfterSaleCreateError = 1004005002 // 售后单创建失败
-	ErrorCodeAfterSaleUpdateError = 1004005003 // 售后单更新失败
+	// 售后基础错误 (1011000100-1011906099)
+	ErrorCodeAfterSaleNotExists   = 1011000100 // 售后单不存在
+	ErrorCodeAfterSaleStatusError = 1011900046 // 售后单状态错误
+	ErrorCodeAfterSaleCreateError = 1011900047 // 售后单创建失败
+	ErrorCodeAfterSaleUpdateError = 1011000107 // 售后单更新失败
 
-	// ========== 购物车相关错误码 (1004006xxx) ==========
+	// ========== 购物车相关错误码 ==========
 
-	// 购物车基础错误 (1004006000-1004006099)
-	ErrorCodeCartNotExists   = 1004006000 // 购物车项不存在
-	ErrorCodeCartAddError    = 1004006001 // 添加购物车失败
-	ErrorCodeCartUpdateError = 1004006002 // 更新购物车失败
-	ErrorCodeCartDeleteError = 1004006003 // 删除购物车失败
-	ErrorCodeCartCountError  = 1004006004 // 购物车数量错误
+	// 购物车基础错误 (1011002000-1011907099)
+	ErrorCodeCartNotExists   = 1011002000 // 购物车项不存在
+	ErrorCodeCartAddError    = 1011900048 // 添加购物车失败
+	ErrorCodeCartUpdateError = 1011900049 // 更新购物车失败
+	ErrorCodeCartDeleteError = 1011900050 // 删除购物车失败
+	ErrorCodeCartCountError  = 1011900051 // 购物车数量错误
 
 	// ========== 分销相关错误码 (1011007xxx) ==========
 	// 对齐 Java: ErrorCodeConstants.BROKERAGE_* (1_011_007_xxx)

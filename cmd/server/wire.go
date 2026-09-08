@@ -175,6 +175,7 @@ func InitApp() (*gin.Engine, error) {
 		job.NewPayOrderExpireJob,  // Added PayOrderExpireJob
 		job.NewPayRefundSyncJob,   // Added PayRefundSyncJob
 		promotionJob.NewCouponExpireJob,
+		promotionJob.NewCombinationRecordExpireJob,
 		infraJob.NewJobLogCleanJob,
 		infraJob.NewErrorLogCleanJob,
 		infraJob.NewAccessLogCleanJob,
@@ -313,6 +314,7 @@ func ProvideJobHandlers(
 	h11 *tradeJob.TradeOrderAutoReceiveJob,
 	h12 *tradeJob.TradeOrderAutoCommentJob,
 	h13 *tradeJob.BrokerageRecordUnfreezeJob,
+	h14 *promotionJob.CombinationRecordExpireJob,
 ) []infra.JobHandler {
-	return []infra.JobHandler{h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13}
+	return []infra.JobHandler{h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14}
 }
