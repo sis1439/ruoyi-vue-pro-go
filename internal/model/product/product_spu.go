@@ -17,7 +17,7 @@ type ProductSpu struct {
 	SliderPicURLs      []string             `gorm:"column:slider_pic_urls;type:json;serializer:json;comment:商品轮播图" json:"sliderPicUrls"`
 	Sort               int                  `gorm:"default:0;comment:排序字段" json:"sort"`
 	Status             int                  `gorm:"default:0;comment:商品状态" json:"status"`                    // 0: 上架, 1: 下架, -1: 回收站
-	SpecType           model.BitBool        `gorm:"column:spec_type;default:0;comment:规格类型" json:"specType"` // false: 单规格, true: 多规格
+	SpecType           model.BitBool        `gorm:"column:spec_type;default:(0);comment:规格类型" json:"specType"` // false: 单规格, true: 多规格
 	Price              int                  `gorm:"default:0;comment:商品价格" json:"price"`                     // 单位：分
 	MarketPrice        int                  `gorm:"default:0;comment:市场价" json:"marketPrice"`                // 单位：分
 	CostPrice          int                  `gorm:"default:0;comment:成本价" json:"costPrice"`                  // 单位：分
@@ -25,7 +25,7 @@ type ProductSpu struct {
 	DeliveryTypes      model.IntListFromCSV `gorm:"column:delivery_types;comment:配送方式数组" json:"deliveryTypes"`
 	DeliveryTemplateID int64                `gorm:"column:delivery_template_id;default:0;comment:物流配置模板编号" json:"deliveryTemplateId"`
 	GiveIntegral       int                  `gorm:"default:0;comment:赠送积分" json:"giveIntegral"`
-	SubCommissionType  model.BitBool        `gorm:"column:sub_commission_type;default:0;comment:分销类型" json:"subCommissionType"` // false: 默认, true: 自行设置
+	SubCommissionType  model.BitBool        `gorm:"column:sub_commission_type;default:(0);comment:分销类型" json:"subCommissionType"` // false: 默认, true: 自行设置
 	SalesCount         int                  `gorm:"default:0;comment:商品销量" json:"salesCount"`
 	VirtualSalesCount  int                  `gorm:"default:0;comment:虚拟销量" json:"virtualSalesCount"`
 	BrowseCount        int                  `gorm:"default:0;comment:浏览量" json:"browseCount"`

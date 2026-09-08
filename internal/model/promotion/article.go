@@ -31,8 +31,8 @@ type PromotionArticle struct {
 	BrowseCount     int           `gorm:"column:browse_count;type:int;not null;default:0;comment:浏览次数" json:"browseCount"`
 	Sort            int           `gorm:"column:sort;type:int;not null;default:0;comment:排序" json:"sort"`
 	Status          int           `gorm:"column:status;type:tinyint;not null;default:0;comment:状态" json:"status"` // 0-开启 1-关闭
-	RecommendHot    model.BitBool `gorm:"column:recommend_hot;type:tinyint(1);not null;default:0;comment:是否热门(小程序)" json:"recommendHot"`
-	RecommendBanner model.BitBool `gorm:"column:recommend_banner;type:tinyint(1);not null;default:0;comment:是否轮播图(小程序)" json:"recommendBanner"`
+	RecommendHot    model.BitBool `gorm:"column:recommend_hot;type:tinyint(1);not null;default:(0);comment:是否热门(小程序)" json:"recommendHot"`
+	RecommendBanner model.BitBool `gorm:"column:recommend_banner;type:tinyint(1);not null;default:(0);comment:是否轮播图(小程序)" json:"recommendBanner"`
 	Content         string        `gorm:"column:content;type:longtext;comment:文章内容" json:"content"`
 
 	model.TenantBaseDO

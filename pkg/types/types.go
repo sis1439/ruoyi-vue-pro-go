@@ -18,6 +18,15 @@ import (
 // BitBool 映射到数据库 BIT(1) 类型的布尔值
 type BitBool bool
 
+// Keep the existing 0/1 Valuer contract on both database dialects.
+func (BitBool) GormDataType() string { return "int" }
+func (BitBool) GormDBDataType(db *gorm.DB, _ *schema.Field) string {
+	if db.Dialector.Name() == "postgres" {
+		return "smallint"
+	}
+	return "tinyint"
+}
+
 // Scan 实现 Scanner 接口
 func (b *BitBool) Scan(value interface{}) error {
 	if value == nil {
@@ -107,7 +116,7 @@ func (sd BitBoolQueryClause) ModifyStatement(stmt *gorm.Statement) {
 				stmt.AddClause(clause.Where{Exprs: []clause.Expression{
 					clause.Eq{
 						Column: clause.Column{Table: clause.CurrentTable, Name: sd.Field.DBName},
-						Value:  false, // BitBool false = 0
+						Value:  BitBool(false), // BitBool false = 0
 					},
 				}})
 				stmt.Clauses["soft_delete_enabled"] = clause.Clause{}
@@ -136,7 +145,7 @@ func (sd BitBoolDeleteClause) ModifyStatement(stmt *gorm.Statement) {
 		// 设置 deleted = 1
 		set := clause.Set{{
 			Column: clause.Column{Name: sd.Field.DBName},
-			Value:  true, // BitBool true = 1
+			Value:  BitBool(true), // BitBool true = 1
 		}}
 		stmt.SetColumn(sd.Field.DBName, true, true)
 		stmt.AddClause(set)

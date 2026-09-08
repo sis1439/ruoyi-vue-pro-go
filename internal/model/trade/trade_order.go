@@ -31,10 +31,10 @@ type TradeOrder struct {
 	CancelTime               *time.Time           `gorm:"column:cancel_time;comment:订单取消时间"`
 	CancelType               int                  `gorm:"column:cancel_type;type:int;comment:取消类型"`
 	Remark                   string               `gorm:"column:remark;type:varchar(255);comment:商家备注"`
-	CommentStatus            model.BitBool        `gorm:"column:comment_status;type:tinyint(1);not null;default:0;comment:是否评价"`
+	CommentStatus            model.BitBool        `gorm:"column:comment_status;type:tinyint(1);not null;default:(0);comment:是否评价"`
 	BrokerageUserID          *int64               `gorm:"column:brokerage_user_id;type:bigint;comment:推广人编号"`
 	PayOrderID               *int64               `gorm:"column:pay_order_id;type:bigint;comment:支付订单编号"`
-	PayStatus                model.BitBool        `gorm:"column:pay_status;type:tinyint(1);not null;default:0;comment:是否已支付"`
+	PayStatus                model.BitBool        `gorm:"column:pay_status;type:tinyint(1);not null;default:(0);comment:是否已支付"`
 	PayTime                  *time.Time           `gorm:"column:pay_time;comment:付款时间"`
 	PayChannelCode           string               `gorm:"column:pay_channel_code;type:varchar(16);comment:支付渠道"`
 	TotalPrice               int                  `gorm:"column:total_price;type:int;not null;comment:商品原价"`
@@ -90,7 +90,7 @@ type TradeOrderItem struct {
 	Properties      datatypes.JSONSlice[TradeOrderItemProperty] `gorm:"column:properties;type:json;serializer:json;comment:属性数组"`
 	PicURL          string                                      `gorm:"column:pic_url;type:varchar(255);comment:商品图片"`
 	Count           int                                         `gorm:"column:count;type:int;not null;comment:购买数量"`
-	CommentStatus   model.BitBool                               `gorm:"column:comment_status;type:tinyint(1);not null;default:0;comment:是否评价"`
+	CommentStatus   model.BitBool                               `gorm:"column:comment_status;type:tinyint(1);not null;default:(0);comment:是否评价"`
 	Price           int                                         `gorm:"column:price;type:int;not null;comment:商品原价"`
 	DiscountPrice   int                                         `gorm:"column:discount_price;type:int;not null;comment:优惠金额"`
 	DeliveryPrice   int                                         `gorm:"column:delivery_price;type:int;not null;comment:运费金额"`

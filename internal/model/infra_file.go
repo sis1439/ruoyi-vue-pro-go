@@ -9,10 +9,10 @@ type InfraFileConfig struct {
 	ID      int64           `gorm:"primaryKey;autoIncrement;comment:配置编号" json:"id"`
 	Name    string          `gorm:"size:63;not null;comment:配置名" json:"name"`
 	Storage int32           `gorm:"not null;comment:存储器" json:"storage"` // 参见 FileStorageEnum
-	Master  BitBool         `gorm:"default:0;comment:是否为主配置" json:"master"`
+	Master  BitBool         `gorm:"default:(0);comment:是否为主配置" json:"master"`
 	Config  json.RawMessage `gorm:"type:json;serializer:json;comment:支付渠道配置" json:"config"`
 	Remark  string          `gorm:"size:255;comment:备注" json:"remark"`
-	BaseDO
+	TenantBaseDO
 }
 
 func (InfraFileConfig) TableName() string {
@@ -28,7 +28,7 @@ type InfraFile struct {
 	Url      string `gorm:"size:1024;comment:访问地址" json:"url"`
 	Type     string `gorm:"size:63;comment:文件类型" json:"type"`
 	Size     int    `gorm:"comment:文件大小" json:"size"`
-	BaseDO
+	TenantBaseDO
 }
 
 func (InfraFile) TableName() string {

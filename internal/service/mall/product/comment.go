@@ -71,7 +71,7 @@ func (s *ProductCommentService) UpdateCommentVisible(ctx context.Context, req *p
 	if err != nil {
 		return err
 	}
-	_, err = s.q.ProductComment.WithContext(ctx).Where(s.q.ProductComment.ID.Eq(req.ID)).Update(s.q.ProductComment.Visible, *req.Visible)
+	_, err = s.q.ProductComment.WithContext(ctx).Where(s.q.ProductComment.ID.Eq(req.ID)).Update(s.q.ProductComment.Visible, model.BitBool(*req.Visible))
 	return err
 }
 
@@ -236,7 +236,7 @@ func (s *ProductCommentService) CreateAppComment(ctx context.Context, userId int
 			return err
 		}
 		// Update OrderItem Status
-		if _, err := tx.TradeOrderItem.WithContext(ctx).Where(tx.TradeOrderItem.ID.Eq(item.ID)).Update(tx.TradeOrderItem.CommentStatus, true); err != nil {
+		if _, err := tx.TradeOrderItem.WithContext(ctx).Where(tx.TradeOrderItem.ID.Eq(item.ID)).Update(tx.TradeOrderItem.CommentStatus, model.BitBool(true)); err != nil {
 			return err
 		}
 
@@ -246,7 +246,7 @@ func (s *ProductCommentService) CreateAppComment(ctx context.Context, userId int
 		count, err := tx.TradeOrderItem.WithContext(ctx).Where(tx.TradeOrderItem.OrderID.Eq(item.OrderID), tx.TradeOrderItem.CommentStatus.Eq(model.NewBitBool(false))).Count()
 		if err == nil && count == 0 {
 			// All commented
-			tx.TradeOrder.WithContext(ctx).Where(tx.TradeOrder.ID.Eq(item.OrderID)).Update(tx.TradeOrder.CommentStatus, true)
+			tx.TradeOrder.WithContext(ctx).Where(tx.TradeOrder.ID.Eq(item.OrderID)).Update(tx.TradeOrder.CommentStatus, model.BitBool(true))
 		}
 
 		return nil

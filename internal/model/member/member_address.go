@@ -12,7 +12,7 @@ type MemberAddress struct {
 	Mobile        string        `gorm:"column:mobile;size:20;not null;comment:手机号" json:"mobile"`
 	AreaID        int64         `gorm:"column:area_id;not null;comment:地区编号" json:"areaId"`
 	DetailAddress string        `gorm:"column:detail_address;size:255;not null;comment:收件详细地址" json:"detailAddress"`
-	DefaultStatus model.BitBool `gorm:"column:default_status;not null;default:0;comment:是否默认" json:"defaultStatus"`
+	DefaultStatus model.BitBool `gorm:"column:default_status;not null;default:(0);comment:是否默认" json:"defaultStatus"`
 
 	model.TenantBaseDO
 }

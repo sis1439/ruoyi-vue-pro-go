@@ -11,7 +11,7 @@ type InfraJob struct {
 	RetryCount     int    `gorm:"column:retry_count;type:int;not null;default:0;comment:重试次数" json:"retryCount"`
 	RetryInterval  int    `gorm:"column:retry_interval;type:int;not null;default:0;comment:重试间隔，单位：毫秒" json:"retryInterval"`
 	MonitorTimeout *int   `gorm:"column:monitor_timeout;type:int;comment:监控超时时间，单位：毫秒" json:"monitorTimeout"`
-	BaseDO
+	TenantBaseDO
 }
 
 func (InfraJob) TableName() string {

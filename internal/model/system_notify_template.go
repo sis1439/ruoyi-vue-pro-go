@@ -11,7 +11,7 @@ type SystemNotifyTemplate struct {
 	Params   string `gorm:"column:params;comment:参数数组" json:"params"`    // JSON array
 	Status   int    `gorm:"column:status;not null;default:0;comment:状态" json:"status"`
 	Remark   string `gorm:"column:remark;comment:备注" json:"remark"`
-	BaseDO
+	TenantBaseDO
 }
 
 func (SystemNotifyTemplate) TableName() string {

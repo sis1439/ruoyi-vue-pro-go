@@ -22,6 +22,9 @@ func NewProductBrandService(q *query.Query) *ProductBrandService {
 
 // CreateBrand 创建品牌
 func (s *ProductBrandService) CreateBrand(ctx context.Context, req *product2.ProductBrandCreateReq) (int64, error) {
+	if req.Sort == nil {
+		return 0, errors.ErrParam
+	}
 	// 校验名称唯一
 	if err := s.validateBrandNameUnique(ctx, 0, req.Name); err != nil {
 		return 0, err
@@ -30,7 +33,7 @@ func (s *ProductBrandService) CreateBrand(ctx context.Context, req *product2.Pro
 	brand := &product.ProductBrand{
 		Name:        req.Name,
 		PicURL:      req.PicURL,
-		Sort:        req.Sort,
+		Sort:        *req.Sort,
 		Description: req.Description,
 		Status:      req.Status,
 	}
@@ -40,6 +43,9 @@ func (s *ProductBrandService) CreateBrand(ctx context.Context, req *product2.Pro
 
 // UpdateBrand 更新品牌
 func (s *ProductBrandService) UpdateBrand(ctx context.Context, req *product2.ProductBrandUpdateReq) error {
+	if req.Sort == nil {
+		return errors.ErrParam
+	}
 	// 校验存在
 	if err := s.ValidateProductBrand(ctx, req.ID); err != nil {
 		return err
@@ -53,7 +59,7 @@ func (s *ProductBrandService) UpdateBrand(ctx context.Context, req *product2.Pro
 		UpdateColumns(map[string]any{
 			"name":        req.Name,
 			"pic_url":     req.PicURL,
-			"sort":        req.Sort,
+			"sort":        *req.Sort,
 			"description": req.Description,
 			"status":      req.Status,
 		})

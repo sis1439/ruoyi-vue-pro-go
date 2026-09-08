@@ -276,7 +276,7 @@ func (s *BrokerageUserService) UpdateBrokerageUserEnabled(ctx context.Context, i
 	}
 
 	updates := map[string]interface{}{
-		"brokerage_enabled": enabled,
+		"brokerage_enabled": model.BitBool(enabled),
 	}
 	if enabled {
 		now := time.Now()

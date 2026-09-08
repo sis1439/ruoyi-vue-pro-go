@@ -16,7 +16,7 @@ type InfraJobLog struct {
 	Duration     *int       `gorm:"column:duration;type:int;comment:执行时长，单位：毫秒" json:"duration"`
 	Status       int        `gorm:"column:status;type:tinyint;not null;comment:任务状态" json:"status"`
 	Result       string     `gorm:"column:result;type:varchar(4000);comment:结果数据" json:"result"`
-	BaseDO
+	TenantBaseDO
 }
 
 func (InfraJobLog) TableName() string {

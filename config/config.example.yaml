@@ -1,0 +1,43 @@
+# Copy to config/config.local.yaml; supply secrets through environment, never commit them.
+app:
+  name: ruoyi-mall
+  env: local
+http:
+  port: ":48080"
+  mode: release
+log:
+  level: info
+  filename: /private/tmp/ruoyi-mall/server.log
+  max_size: 100
+  max_age: 7
+  max_backups: 3
+database:
+  driver: postgres
+  dsn: "" # Required RUOYI_DATABASE_DSN; migrations run separately.
+  max_idle: 5
+  max_open: 20
+  max_lifetime: 300
+security:
+  jwt_secret: "" # Required RUOYI_JWT_SECRET, independent random secret >=32 bytes.
+redis:
+  addr: 127.0.0.1:6379
+  password: ""
+  db: 14
+trade:
+  express:
+    client: "" # External service remains unconfigured until credentials are supplied.
+pay:
+  order_notify_url: ""
+  refund_notify_url: ""
+  order_no_prefix: mall
+  wallet_pay_app_key: ""
+iot:
+  core:
+    message_bus:
+      worker_num: 1
+      queue_size: 100
+  gateway:
+    server_id: mall-local
+    max_connections: 10
+    mqtt:
+      broker: ""

@@ -15,7 +15,7 @@ type PromotionDiyTemplate struct {
 	PreviewPicUrls types.StringListFromCSV `gorm:"column:preview_pic_urls;type:varchar(2000);comment:预览图片" json:"previewPicUrls"`
 	Property       datatypes.JSON          `gorm:"column:property;type:longtext;comment:模板属性" json:"property"` // JSON
 	Remark         string                  `gorm:"column:remark;type:varchar(255);comment:备注" json:"remark"`
-	Used           model.BitBool           `gorm:"column:used;type:bit(1);not null;default:0;comment:是否使用" json:"used"`
+	Used           model.BitBool           `gorm:"column:used;type:bit(1);not null;default:(0);comment:是否使用" json:"used"`
 	UsedTime       *time.Time              `gorm:"column:used_time;comment:使用时间" json:"usedTime"`
 	model.TenantBaseDO
 }
