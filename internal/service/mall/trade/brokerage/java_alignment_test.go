@@ -22,6 +22,10 @@ func TestJavaFixedZeroCommission(t *testing.T) {
 	require.Zero(t, s.calculatePrice(10000, 10, &zero))
 	require.Equal(t, 17, s.calculatePrice(10000, 10, &fixed))
 	require.Equal(t, 1000, s.calculatePrice(10000, 10, nil))
+	for _, input := range [][2]int{{100, -1}, {-100, 1}, {0, 10}, {100, 0}, {-100, -1}} {
+		require.Zero(t, s.calculatePrice(input[0], input[1], nil))
+	}
+	require.Equal(t, 17, s.calculatePrice(-100, -1, &fixed))
 }
 
 func TestJavaChildSummaryPostgres(t *testing.T) {

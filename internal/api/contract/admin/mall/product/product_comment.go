@@ -116,6 +116,6 @@ type AppProductCommentResp struct {
 	Content           string                   `json:"content"`
 	PicURLs           []string                 `json:"picUrls"`
 	ReplyContent      string                   `json:"replyContent"`
-	SkuProperties     []ProductSkuPropertyResp `json:"properties"`
+	SkuProperties     []ProductSkuPropertyResp `json:"skuProperties"`
 	CreateTime        types.JsonDateTime       `json:"createTime"`
 }

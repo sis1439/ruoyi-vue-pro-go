@@ -39,7 +39,7 @@ func RegisterAppRoutes(engine *gin.Engine,
 				authGroup.POST("/login", handlers.Member.Auth.Login)
 				authGroup.POST("/sms-login", handlers.Member.Auth.SmsLogin)
 				authGroup.POST("/social-login", handlers.Member.Auth.SocialLogin)
-				authGroup.POST("/send-sms-code", handlers.Member.Auth.SendSmsCode)
+				authGroup.POST("/send-sms-code", middleware.OptionalAuth(), handlers.Member.Auth.SendSmsCode)
 				authGroup.POST("/validate-sms-code", handlers.Member.Auth.ValidateSmsCode)
 				authGroup.POST("/logout", handlers.Member.Auth.Logout)
 				authGroup.POST("/refresh-token", handlers.Member.Auth.RefreshToken)

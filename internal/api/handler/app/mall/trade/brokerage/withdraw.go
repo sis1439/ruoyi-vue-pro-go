@@ -158,6 +158,10 @@ func (h *AppBrokerageWithdrawHandler) CreateBrokerageWithdraw(c *gin.Context) {
 		return
 	}
 
+	if err := reqVO.Validate(); err != nil {
+		response.WriteError(c, 400, err.Error())
+		return
+	}
 	userId := context.GetLoginUserID(c)
 	id, err := h.withdrawSvc.CreateBrokerageWithdraw(c, userId, &reqVO)
 	if err != nil {

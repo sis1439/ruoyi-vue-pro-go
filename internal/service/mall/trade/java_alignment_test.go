@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/stretchr/testify/require"
+	dto "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	productmodel "github.com/wxlbd/ruoyi-mall-go/internal/model/product"
 	model "github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
@@ -109,4 +110,19 @@ func TestJavaCancelExcludesAfterSaleStockPostgres(t *testing.T) {
 	require.NoError(t, f.db.WithContext(f.ctx).Order("id").Find(&skus).Error)
 	require.Equal(t, 2, skus[0].Stock)
 	require.Equal(t, 2, skus[1].Stock)
+}
+
+func TestJavaOrderDetailDeletedExpressPostgres(t *testing.T) {
+	db := testutil.PostgreSQL(t)
+	require.NoError(t, db.Use(&database.TenantPlugin{}))
+	ctx := tenant.WithTenant(context.Background(), 1)
+	q := query.Use(db)
+	express := &model.TradeDeliveryExpress{Name: "historical"}
+	require.NoError(t, db.WithContext(ctx).Create(express).Error)
+	delivery := NewDeliveryExpressService(q)
+	require.NoError(t, delivery.DeleteDeliveryExpress(ctx, express.ID))
+	svc := NewTradeOrderQueryService(q, nil, delivery)
+	res := &dto.AppTradeOrderDetailResp{}
+	require.NoError(t, svc.FillAppOrderDetail(ctx, &model.TradeOrder{LogisticsID: express.ID}, res))
+	require.Empty(t, res.LogisticsName)
 }

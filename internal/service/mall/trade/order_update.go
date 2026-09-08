@@ -3,6 +3,7 @@ package trade
 import (
 	"context"
 	"fmt"
+	"github.com/samber/lo"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -1717,7 +1718,7 @@ func (s *TradeOrderUpdateService) CreateOrderItemCommentByMember(ctx context.Con
 	// 委托给 ProductCommentService 创建评价
 	commentReq := &product.AppProductCommentCreateReq{
 		OrderItemID:       createReq.OrderItemID,
-		Anonymous:         createReq.Anonymous,
+		Anonymous:         lo.FromPtr(createReq.Anonymous),
 		Content:           createReq.Content,
 		PicURLs:           createReq.PicUrls,
 		Scores:            (createReq.DescriptionScores + createReq.BenefitScores) / 2,
@@ -1998,7 +1999,7 @@ func (s *TradeOrderUpdateService) CreateOrderItemCommentBySystem(ctx context.Con
 				Content:           "好评！系统默认好评。",
 				BenefitScores:     5,
 				DescriptionScores: 5,
-				Anonymous:         true,
+				Anonymous:         lo.ToPtr(true),
 			}
 			if _, err := s.CreateOrderItemCommentByMember(ctx, order.UserID, req); err != nil {
 				s.logger.Error("系统创建评价失败", zap.Int64("orderItemId", item.ID), zap.Error(err))

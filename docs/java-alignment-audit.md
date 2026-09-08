@@ -539,3 +539,163 @@ Go 的 `seckill_calculator.go` 只改了 `DiscountPrice` 和 `PayPrice`，没有
 - `go build ./...`、`go vet ./...`：通过。构建曾输出本机模块缓存写权限提示，但返回状态为 0；测试使用独立可写 `GOCACHE`。
 - `git diff --check`：通过；检查新增文件，未纳入本地配置、凭证、测试日志或生成 DAO。
 - 外部支付/转账渠道、对象存储实际直传及 uniapp 真机联调未执行；本地验证不等同于真实渠道验收。
+
+---
+
+## 修复后复核：遗留差异（2026-09-08）
+
+在修复分支 `codex/java-alignment-audit`（HEAD `3eed27a`）上重跑了全部维度的比对。以下保留修复前的复核发现及修正说明。R8 涉及改密码流程阻断；R7 经源码复查排除。各项最新处理结果与验证范围见文末「复核问题收口」。
+
+### R1 `/promotion/article/*` 直接返回 admin DTO
+
+`internal/api/handler/app/mall/promotion/article.go:59` 返回 `promotion2.ArticleRespVO`（admin 契约），没有 app 专用 DTO：
+
+- `createTime` 仍是裸 `time.Time` → 输出 RFC3339 字符串，Java 是毫秒时间戳。**这是 P1-6 时间格式统一唯一的漏网点**（`internal/api/contract/app/` 下已清零，app handler 引用的其他 admin DTO 也已确认无裸时间）
+- 多返回 4 个内部字段：`sort`、`status`、`recommendHot`、`recommendBanner`。Java `AppArticleRespVO` 只有 `{id, title, author, categoryId, picUrl, introduction, content, createTime, browseCount, spuId}`
+
+前端 `pages/public/richtext.vue` 只读 `title` 和 `content`，所以没有暴露出来。
+
+### R2 提现与评价的必填校验缺失
+
+字段已按 P1-2 补齐，但没带上 Java 的校验注解。Java service 层只校验 `price`，字段级校验全靠注解，所以 Go 这里传空会直接写入空值：
+
+| 字段 | Java 注解 | Go 现状 |
+|---|---|---|
+| `AppBrokerageWithdrawCreateReqVO.userAccount` | `@NotBlank`，仅 Bank / WechatApi / AlipayApi 组 | 修复前无 |
+| `AppBrokerageWithdrawCreateReqVO.userName` | `@NotBlank`，仅 Bank / WechatApi / AlipayApi 组 | 修复前无 |
+| `AppBrokerageWithdrawCreateReqVO.bankName` | `@NotNull`，仅 Bank 组 | 修复前无 |
+| `AppBrokerageWithdrawCreateReqVO.transferChannelCode` | `@NotNull` 仅 WechatApi 组；提供渠道时校验 `@InEnum` | 修复前无 |
+| `AppTradeOrderItemCommentCreateReqVO.anonymous` | `@NotNull` | 裸 `bool`，不传默认 false |
+| `AppBrokerageUserChildSummaryPageReqVO.level` | `@NotNull` `@Range` | `omitempty,oneof=1 2` |
+| `AppBrokerageUserRankPageReqVO.times` | `@NotNull` | 无 |
+
+### R3 佣金计算缺前置判断
+
+Java `calculatePrice`：
+
+```java
+if (fixedPrice != null && fixedPrice >= 0) return fixedPrice;
+if (basePrice != null && basePrice > 0 && percent != null && percent > 0) {
+    return MoneyUtils.calculateRatePriceFloor(basePrice, percent);
+}
+return 0;
+```
+
+Go（`internal/service/mall/trade/brokerage/record.go:478`）固定佣金那段已按 P1-16 修好，但比例分支直接 `return basePrice * percent / 100`，缺 `basePrice > 0 && percent > 0` 的前置判断 —— `percent` 为负数时会算出负佣金。
+
+### R4 售后日志向 app 端暴露内部状态字段
+
+`internal/api/contract/app/support.go:29` 的 `AfterSaleLogResp` 有 7 个字段，Java `AppAfterSaleLogRespVO` 只有 `{id, content, createTime}`。多出的 `afterSaleId`、`beforeStatus`、`afterStatus`、`operateType` 属于内部流转状态，不该给 app 端。
+
+### R5 快递公司 DTO 字段超集
+
+`internal/api/contract/app/support.go:9` 的 `DeliveryExpressResp` 返回 `{id, name, code, logo}`，Java `AppDeliveryExpressRespVO` 只有 `{id, name}`。
+
+### R6 评论字段名与 Java 不一致
+
+Java `AppProductCommentRespVO` 是 `skuProperties`，Go app 端（`internal/api/contract/admin/mall/product/product_comment.go:119`）用的是 `properties`。
+
+前端 `pages/goods/components/detail/comment-item.vue` 两个都不读（只读 `content`、`picUrls`、`replyContent`、`replyTime`、`scores`、`userNickname`、`userAvatar`），选哪个都不影响功能。
+
+### R7 评论 DTO 的 13 个字段（复核后排除）
+
+原复核将 `userId`、`anonymous`、`orderId`、`orderItemId`、`replyStatus`、`replyUserId`、`additionalContent`、`additionalPicUrls`、`additionalTime`、`spuId`、`skuId`、`descriptionScores`、`benefitScores` 列为缺失；经复查，这 13 个字段在 `35b20e6` 的 `AppProductCommentResp` 中已存在。
+
+其中可从实体取得的字段已由 `ProductCommentService.GetAppCommentPage` 映射。三个 `additional*` 字段在 Java VO 中存在，但当前 Java / Go 实体均没有对应存储字段，因此保持 nullable 响应，不伪造追加评论数据。本次补上字段存在性回归测试；R6 的 JSON 键名差异仍单独修正。
+
+### R8 【P0】发送短信验证码：改密码场景必然 400，且三个场景校验全缺
+
+**定级更正**：本项初判为「不影响前端功能」，复查后确认是功能阻断，等级等同 P0。
+
+#### R8-1 改密码拿不到验证码
+
+前端 `sheep/hooks/useModal.js:76` 注释写明「只有 mobile 非空时才校验。因为部分场景（修改密码），不需要输入手机」，`change-password.vue:32` 调用 `getSmsCode('changePassword')`（签名 `getSmsCode(event, mobile = '')`），实际发出 `{mobile: '', scene: 3}`。
+
+Java `AppAuthSmsSendReqVO.mobile` 只有 `@Mobile` 格式校验、允许为空，`MemberAuthServiceImpl.sendSmsCode` 对该场景专门处理：
+
+```java
+// 情况 3：如果是修改密码场景，需要查询手机号，无需前端传递
+if (Objects.equals(reqVO.getScene(), SmsSceneEnum.MEMBER_UPDATE_PASSWORD.getScene())) {
+    MemberUserDO user = userService.getUser(userId);
+    reqVO.setMobile(user.getMobile());
+}
+```
+
+Go `internal/api/contract/admin/member/member_auth.go:27` 是 `binding:"required,len=11"`，空串直接 400，请求进不了 service。
+
+影响：用户拿不到验证码，改密码全流程走不通。**与 P0-2 的修复配套不上** —— 改密码接口已改为 `{password, code}`，但那个 `code` 根本发不出来。
+
+#### R8-2 三个场景的业务校验全部缺失
+
+Go `internal/service/member/auth.go:213` 的 `SendSmsCode` 只有一行透传，Java 的三段场景逻辑一个都没有：
+
+| 场景 | Java 的处理 | Go |
+|---|---|---|
+| scene=3 修改密码 | 从当前登录用户查手机号并回填 | 无 |
+| scene=2 修改手机号 | 校验新手机号未被他人注册，否则 `AUTH_MOBILE_USED` | 无 |
+| scene=4 重置密码 | 校验手机号已注册，否则 `USER_MOBILE_NOT_EXISTS` | 无 |
+
+scene=4 缺注册校验会对未注册号码尝试发送验证码，增加无效短信请求；底层已有按手机号的发送频率和每日额度限制，不能据此描述为无限制发送。
+
+#### R8-3 结构性障碍：拿不到当前用户
+
+Go 的 `/member/auth/send-sms-code`（`internal/api/router/app.go:42`）注册在 `authGroup` 但**未挂 `middleware.Auth()`**，handler 也不读 userId。Java 是 `@PermitAll` + service 内 `getLoginUserId()` 取可选登录态。
+
+修改：路由改用 `middleware.OptionalAuth()`，`mobile` 去掉 `required`（保留非空时的 `len=11` 格式校验），service 补齐三个场景分支。
+
+`/member/auth/validate-sms-code` 有同样的 `mobile` 必填问题（Java `AppAuthSmsValidateReqVO.mobile` 也只有 `@Mobile`），但前端当前没有任何调用点，不构成阻断，建议一并对齐。
+
+### 路由：仍缺 7 个 Java 有、前端未用的接口
+
+`promotion/article/list`、`promotion/article-category/list`、`member/level/list`、`member/experience-record/page`、`promotion/bargain-record/page`、`promotion/article/add-browse-count`、`promotion/banner/add-browse-count`。
+
+前端调用的 `app/mplive/getMpLink`、`app/mplive/getRoomList`、`third/apple/login` 三个 Java 侧同样没有，属于 uniapp 的 migration 遗留，不需要实现。
+
+---
+
+## 复核确认已修复
+
+| 项 | 复核方式与结果 |
+|---|---|
+| P0-1 | `internal/consts/pay.go:61-62` 退款 20 / 关闭 30 |
+| P0-5 | 三方路由脚本比对：**方法不符 0 处** |
+| P0-6 | 前端在用的 13 个接口全部接入；Java 153 / Go 150 / 前端 130，前端缺口仅剩 Java 也没有的 3 个 migration 接口 |
+| P1-6 | `internal/api/contract/app/` 下裸 `time.Time` 归零；app handler 引用的 admin DTO 逐个扫描，仅 R1 一处遗留 |
+| P1-11 | `reward_activity_calculator.go:88-96` 按 `result.SkuIDs` 筛出参与项再分摊 |
+| P1-12 | `price_calculator_helper.go` 的 `PayPrice < 0` 钳制已删除 |
+| P1-13 | 5 处全部改用 `TradeOrderCancelType*`（10/20/30/40），旧常量已删 |
+| P1-15 | `CancelAfterSale`/`AgreeAfterSale`/`RefundAfterSale`/`DeliveryAfterSale` 统一走 `updateAfterSale()`（`after_sale.go:879`），带 `Status.Eq(as.Status)` 条件和 `RowsAffected != 1` 检查 |
+| P1-16 | `calculatePrice` 的 `fixedPrice` 改为 `*int` + `>= 0` 判断（比例分支的遗留见 R3） |
+| P1-17 | `combination_record_expire_job.go` 已创建，`wire_gen.go:159-160` 注册，job 总数 13 → 14 |
+| P2-1 | `pkg/types/query_time.go:11` 的 `QueryTimeRange` 统一支持 `key`、`key[]`、`key[0]/key[1]` 三种形式，钱包流水与积分记录均已接入 |
+| P2-3 | 交易错误码已迁至 1-011 号段，与 member 的 1-004 段不再冲突。脚本报出的 15 个「同码不同义」经核对全部是同义不同名（如 Java `ORDER_NOT_FOUND` vs Go `OrderNotExists`） |
+| P2-7 | 分摊改回 Java 的浮点表达式 `int(float64(total) * (float64(pay) / float64(totalPay)))` 与 `i < len(items)-1` 的数组末项规则 |
+
+复核方法：路由三方脚本比对、Java 146 个 App*VO 对 Go struct 的字段与类型比对、必填校验注解比对、错误码数值段比对、app handler 引用链上的裸时间扫描、修复点逐个读码确认。
+
+
+## 复核问题收口（2026-09-08）
+
+本轮在 `codex/java-alignment-audit` 上处理 R1～R8 与 Astra high 对 `35b20e6` 的三项 review finding。实现未使用 subagent。上文的路由差异清单保留为另行跟踪项，不将尚未实现的 Java 非前端接口标记为完成。
+
+| 复核项 | 当前结果 | 实现 / 验证入口 |
+|---|---|---|
+| R1 | 文章详情和分页统一映射 App 专用 10 字段响应，时间为毫秒；不再输出四个管理字段 | `internal/api/contract/app/mall/promotion/app_article.go`；`TestAppArticleResponse` |
+| R2 | 按提现类型执行校验：钱包无账户要求，银行卡 / 微信 API / 支付宝 API 校验姓名与账户，银行卡要求 bankName 非 null，微信 API 要求渠道与最低 30 分；渠道按 Java 枚举检查。评价区分遗漏 anonymous 与显式 false，系统评价同步调整；分销 level 必填；两种排行分页 times 必填并支持三种数组编码及时间解析 | `AppBrokerageWithdrawCreateReqVO.Validate`；`TestJavaReviewValidationAndResponseFields`；`TestJavaRankTimesRequired` |
+| R3 | 固定佣金优先规则保留，比例分支仅在 basePrice、percent 都为正时计算，否则为 0 | `TestJavaFixedZeroCommission` 增加负数 / 零边界 |
+| R4 | 售后日志 App 响应仅保留 id、content、createTime | `internal/api/contract/app/support.go`；响应键集测试 |
+| R5 | 快递公司 App 响应仅保留 id、name | 同上 |
+| R6 | 评论属性 JSON 键改为 skuProperties | `TestJavaReviewValidationAndResponseFields` |
+| R7 | 排除误判；13 字段已存在，三个 additional 字段保持 null，新增键存在性测试 | 上文 R7 修正说明 |
+| R8 | send-sms-code 使用 OptionalAuth；scene=3 必须有可信会员身份，从该用户取手机号并忽略客户端指定的其他手机号。scene=2 拒绝他人已用号码；scene=4 拒绝本租户未注册号码；App 短信限定会员场景 1～4。send / validate 请求允许省略 mobile，但底层实际发送 / 验证仍需合法号码 | `MemberAuthService.smsMobile`；`TestJavaSmsSceneDestinationsPostgres` |
+| Review P1：拼团批次中止 | 一次读取活动映射，缺失活动按普通过期团处理；保留单团事务错误回滚，外层聚合错误并继续其他团 | `TestJavaExpireCombinationBatchPostgres` 验证已删除活动、单团失败不影响其他团、重试仅处理未完成团 |
+| Review P2：扩展单迁移遗漏 | 新增 `000008_pay_order_extension_closed.up.sql`，仅转换扩展单旧关闭状态 20→30；不重写已提交的 000007 | `TestJavaHistoricalExtensionClosedMigrationPostgres` 验证从版本 7 升级、重复应用迁移及重复关闭回调 |
+| Review P2：历史订单详情失败 | 物流公司不存在视为可选展示信息缺失；真实查询故障仍返回错误 | `TestJavaOrderDetailDeletedExpressPostgres` |
+
+### 本轮实际验证
+
+- 先运行受影响的 Java 对齐回归用例，使用隔离 PostgreSQL schema 和 `-race`：通过。
+- `make test-integration`：393 个测试（含子测试）、151 个顶层测试、37 个有测试的包通过；无失败或跳过的测试，集成验收检查器通过。使用本地隔离 PostgreSQL 16.10 与 Redis，未对业务库执行迁移。
+- `go build ./...`、`go vet ./...`、`git diff --check`：通过。构建输出过本机模块缓存写权限提示，退出状态为 0；本轮使用独立可写 GOCACHE。
+- 新迁移由应用迁移流程顺序执行；尚未应用到业务数据库。000007 的历史主单状态转换仍要求停旧版本写入并确认历史数据来源，不能反复手工运行原始转换 SQL。
+- 未执行真实短信发送、支付 / 转账渠道联调或 uniapp 真机联调。短信新增用例验证真实数据库中的场景、手机号选择与租户归属；拼团用例使用真实数据库验证批次状态及回滚，跨模块取消订单以测试替身注入成功 / 失败，不能替代真实退款渠道验收。

@@ -56,7 +56,7 @@ func (h *SupportHandler) GetExpressList(c *gin.Context) {
 	}
 	result := make([]dto.DeliveryExpressResp, 0, len(list))
 	for _, item := range list {
-		result = append(result, dto.DeliveryExpressResp{ID: item.ID, Name: item.Name, Code: item.Code, Logo: item.Logo})
+		result = append(result, dto.DeliveryExpressResp{ID: item.ID, Name: item.Name})
 	}
 	response.WriteSuccess(c, result)
 }
@@ -131,7 +131,7 @@ func (h *SupportHandler) GetAfterSaleLogs(c *gin.Context) {
 	}
 	result := make([]dto.AfterSaleLogResp, 0, len(list))
 	for _, item := range list {
-		result = append(result, dto.AfterSaleLogResp{ID: item.ID, AfterSaleID: item.AfterSaleID, BeforeStatus: item.BeforeStatus, AfterStatus: item.AfterStatus, OperateType: item.OperateType, Content: item.Content, CreateTime: types.ToJsonDateTime(item.CreateTime)})
+		result = append(result, dto.AfterSaleLogResp{ID: item.ID, Content: item.Content, CreateTime: types.ToJsonDateTime(item.CreateTime)})
 	}
 	response.WriteSuccess(c, result)
 }

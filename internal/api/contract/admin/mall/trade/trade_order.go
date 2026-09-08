@@ -180,7 +180,7 @@ type TradeOrderRemarkReq struct {
 
 // AppTradeOrderItemCommentCreateReq 用户 App - 商品评价创建请求
 type AppTradeOrderItemCommentCreateReq struct {
-	Anonymous         bool     `json:"anonymous"`
+	Anonymous         *bool    `json:"anonymous" binding:"required"`
 	OrderItemID       int64    `json:"orderItemId" binding:"required"`
 	DescriptionScores int      `json:"descriptionScores" binding:"required,min=1,max=5"`
 	BenefitScores     int      `json:"benefitScores" binding:"required,min=1,max=5"`

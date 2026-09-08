@@ -75,19 +75,20 @@ const (
 // PayChannel 支付渠道编码 (对齐 Java: PayChannelEnum)
 // 参考 https://www.pingxx.com/api/支付渠道属性值.html
 const (
-	PayChannelWXPub     = "wx_pub"     // 微信 JSAPI 支付 - 公众号网页
-	PayChannelWXLite    = "wx_lite"    // 微信小程序支付
-	PayChannelWXApp     = "wx_app"     // 微信 App 支付
-	PayChannelWXNative  = "wx_native"  // 微信 Native 支付
-	PayChannelWXWap     = "wx_wap"     // 微信 Wap 网站支付 - H5 网页
-	PayChannelWXBar     = "wx_bar"     // 微信付款码支付
-	PayChannelAlipayPC  = "alipay_pc"  // 支付宝 PC 网站支付
-	PayChannelAlipayWap = "alipay_wap" // 支付宝 Wap 网站支付
-	PayChannelAlipayApp = "alipay_app" // 支付宝 App 支付
-	PayChannelAlipayQR  = "alipay_qr"  // 支付宝扫码支付
-	PayChannelAlipayBar = "alipay_bar" // 支付宝条码支付
-	PayChannelMock      = "mock"       // 模拟支付
-	PayChannelWallet    = "wallet"     // 钱包支付
+	PayChannelWXPub      = "wx_pub"      // 微信 JSAPI 支付 - 公众号网页
+	PayChannelWXLite     = "wx_lite"     // 微信小程序支付
+	PayChannelWXApp      = "wx_app"      // 微信 App 支付
+	PayChannelWXNative   = "wx_native"   // 微信 Native 支付
+	PayChannelWXWap      = "wx_wap"      // 微信 Wap 网站支付 - H5 网页
+	PayChannelWXBar      = "wx_bar"      // 微信付款码支付
+	PayChannelAlipayPC   = "alipay_pc"   // 支付宝 PC 网站支付
+	PayChannelAlipayWap  = "alipay_wap"  // 支付宝 Wap 网站支付
+	PayChannelAlipayApp  = "alipay_app"  // 支付宝 App 支付
+	PayChannelAlipayQR   = "alipay_qr"   // 支付宝扫码支付
+	PayChannelAlipayLite = "alipay_lite" // 支付宝小程序支付
+	PayChannelAlipayBar  = "alipay_bar"  // 支付宝条码支付
+	PayChannelMock       = "mock"        // 模拟支付
+	PayChannelWallet     = "wallet"      // 钱包支付
 )
 
 // IsPayChannelAlipay 判断是否为支付宝渠道
@@ -126,6 +127,6 @@ const (
 
 func PayChannelName(code string) string {
 	return map[string]string{
-		"wx_pub": "微信 JSAPI 支付", "wx_lite": "微信小程序支付", "wx_app": "微信 App 支付", "wx_native": "微信 Native 支付", "wx_wap": "微信 H5 支付", "wx_bar": "微信付款码支付", "alipay_pc": "支付宝 PC 网站支付", "alipay_wap": "支付宝 Wap 网站支付", "alipay_app": "支付宝 App 支付", "alipay_qr": "支付宝扫码支付", "alipay_bar": "支付宝条码支付", "mock": "模拟支付", "wallet": "钱包支付",
+		"wx_pub": "微信 JSAPI 支付", "wx_lite": "微信小程序支付", "wx_app": "微信 App 支付", "wx_native": "微信 Native 支付", "wx_wap": "微信 H5 支付", "wx_bar": "微信付款码支付", "alipay_pc": "支付宝 PC 网站支付", "alipay_wap": "支付宝 Wap 网站支付", "alipay_app": "支付宝 App 支付", "alipay_qr": "支付宝扫码支付", "alipay_bar": "支付宝条码支付", "alipay_lite": "支付宝小程序支付", "mock": "模拟支付", "wallet": "钱包支付",
 	}[code]
 }

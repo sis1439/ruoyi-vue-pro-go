@@ -24,15 +24,15 @@ type AppAuthSmsLoginReq struct {
 
 // AppAuthSmsSendReq 发送手机验证码
 type AppAuthSmsSendReq struct {
-	Mobile string `json:"mobile" binding:"required,len=11"`
-	Scene  int    `json:"scene" binding:"required"` // 对应 SmsSceneEnum
+	Mobile string `json:"mobile" binding:"omitempty,len=11"`
+	Scene  int    `json:"scene" binding:"required,oneof=1 2 3 4"` // 对应 SmsSceneEnum
 }
 
 // AppAuthSmsValidateReq 校验手机验证码
 type AppAuthSmsValidateReq struct {
-	Mobile string `json:"mobile" binding:"required,len=11"`
+	Mobile string `json:"mobile" binding:"omitempty,len=11"`
 	Code   string `json:"code" binding:"required"`
-	Scene  int    `json:"scene" binding:"required"`
+	Scene  int    `json:"scene" binding:"required,oneof=1 2 3 4"`
 }
 
 // AppAuthSocialLoginReq 社交登录

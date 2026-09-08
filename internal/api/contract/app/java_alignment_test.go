@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	product "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	trade "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
 	member "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
+	app "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/app"
 	brokerage "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/app/mall/trade"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
@@ -73,5 +75,78 @@ func TestJavaAppTimestampAndPagination(t *testing.T) {
 			require.LessOrEqual(t, limit, 200)
 			require.Equal(t, limit, p.GetOffset())
 		}
+	}
+}
+
+func TestJavaReviewValidationAndResponseFields(t *testing.T) {
+	for _, tt := range []struct {
+		body  string
+		valid bool
+	}{
+		{`{"type":1,"price":0}`, true},
+		{`{"type":2,"price":100,"userName":"A","userAccount":"B","bankName":""}`, true},
+		{`{"type":2,"price":100,"userName":"A","userAccount":"B"}`, false},
+		{`{"type":6,"price":100,"userName":" ","userAccount":"B"}`, false},
+		{`{"type":5,"price":29,"userName":"A","userAccount":"B","transferChannelCode":"wx_lite"}`, false},
+		{`{"type":5,"price":30,"userName":"A","userAccount":"B","transferChannelCode":"wx_lite"}`, true},
+		{`{"type":5,"price":30,"userName":"A","userAccount":"B","transferChannelCode":"invalid"}`, false},
+	} {
+		var r brokerage.AppBrokerageWithdrawCreateReqVO
+		require.NoError(t, json.Unmarshal([]byte(tt.body), &r))
+		require.Equal(t, tt.valid, r.Validate() == nil, tt.body)
+	}
+	for _, body := range []string{`{"orderItemId":1,"content":"ok","descriptionScores":5,"benefitScores":5}`, `{"orderItemId":1,"content":"ok","descriptionScores":5,"benefitScores":5,"anonymous":false}`} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		var r trade.AppTradeOrderItemCommentCreateReq
+		err := c.ShouldBindJSON(&r)
+		require.Equal(t, strings.Contains(body, "anonymous"), err == nil)
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"mobile":"","scene":3}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	var sms member.AppAuthSmsSendReq
+	require.NoError(t, c.ShouldBindJSON(&sms))
+	for _, path := range []string{"/", "/?level=0", "/?level=1"} {
+		c.Request = httptest.NewRequest("GET", path, nil)
+		var r brokerage.AppBrokerageUserChildSummaryPageReqVO
+		require.Equal(t, path == "/?level=1", c.ShouldBindQuery(&r) == nil)
+	}
+	for _, v := range []struct {
+		value any
+		keys  []string
+	}{
+		{app.AfterSaleLogResp{}, []string{"id", "content", "createTime"}},
+		{app.DeliveryExpressResp{}, []string{"id", "name"}},
+	} {
+		b, err := json.Marshal(v.value)
+		require.NoError(t, err)
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(b, &m))
+		require.Len(t, m, len(v.keys))
+		for _, k := range v.keys {
+			require.Contains(t, m, k)
+		}
+	}
+	b, err := json.Marshal(product.AppProductCommentResp{})
+	require.NoError(t, err)
+	var comment map[string]any
+	require.NoError(t, json.Unmarshal(b, &comment))
+	require.Contains(t, comment, "skuProperties")
+	require.NotContains(t, comment, "properties")
+	for _, k := range []string{"userId", "anonymous", "orderId", "orderItemId", "replyStatus", "replyUserId", "additionalContent", "additionalPicUrls", "additionalTime", "spuId", "skuId", "descriptionScores", "benefitScores"} {
+		require.Contains(t, comment, k)
+	}
+}
+
+func TestJavaRankTimesRequired(t *testing.T) {
+	for _, path := range []string{"/", "/?times[]=1700000000000", "/?times[]=1700000000000&times[]=1700100000000", "/?times[0]=1700000000000&times[1]=1700100000000", "/?times=1700000000000&times=1700100000000"} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("GET", path, nil)
+		var r brokerage.AppBrokerageUserRankPageReqVO
+		r.Times = types.QueryTimeRange(c.Request.URL.Query(), "times")
+		err := c.ShouldBindQuery(&r)
+		require.Equal(t, strings.Contains(path, "1700100000000"), err == nil, path)
 	}
 }

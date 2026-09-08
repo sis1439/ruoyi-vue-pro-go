@@ -1,6 +1,7 @@
 package brokerage
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
@@ -148,6 +149,7 @@ func (h *AppBrokerageUserHandler) GetBrokerageUserChildSummaryPage(c *gin.Contex
 // GetBrokerageUserRankPageByUserCount 获得分销用户排行分页（基于用户量）
 func (h *AppBrokerageUserHandler) GetBrokerageUserRankPageByUserCount(c *gin.Context) {
 	var r tradeDto.AppBrokerageUserRankPageReqVO
+	r.Times = types.QueryTimeRange(c.Request.URL.Query(), "times")
 	if err := c.ShouldBindQuery(&r); err != nil {
 		response.WriteError(c, 400, "参数错误")
 		return
@@ -191,6 +193,7 @@ func (h *AppBrokerageUserHandler) GetBrokerageUserRankPageByUserCount(c *gin.Con
 // GetBrokerageUserRankPageByPrice 获得分销用户排行分页（基于佣金）
 func (h *AppBrokerageUserHandler) GetBrokerageUserRankPageByPrice(c *gin.Context) {
 	var r trade.AppBrokerageUserRankPageReq
+	r.Times = types.QueryTimeRange(c.Request.URL.Query(), "times")
 	if err := c.ShouldBindQuery(&r); err != nil {
 		response.WriteError(c, 400, "参数错误")
 		return

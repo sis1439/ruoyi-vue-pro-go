@@ -555,10 +555,9 @@ type BrokerageUserRankByUserCountResult struct {
 // GetBrokerageUserRankPageByUserCount 获得分销用户排行分页（基于用户量）
 func (s *BrokerageUserService) GetBrokerageUserRankPageByUserCount(ctx context.Context, r *tradeReq.AppBrokerageUserRankPageReqVO) (*pagination.PageResult[*BrokerageUserRankByUserCountResult], error) {
 	// 解析时间范围
-	var beginTime, endTime time.Time
-	if len(r.Times) >= 2 {
-		beginTime = parseTime(r.Times[0])
-		endTime = parseTime(r.Times[1])
+	beginTime, endTime, err := types.ParseTimeRange(r.Times)
+	if err != nil {
+		return nil, err
 	}
 
 	// 使用 Gen 生成的字段和表名构建查询

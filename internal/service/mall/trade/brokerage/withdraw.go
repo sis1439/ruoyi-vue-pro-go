@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/samber/lo"
 	"strconv"
 	"time"
 
@@ -221,8 +222,8 @@ func getClientIP(ctx context.Context) string {
 
 // CreateBrokerageWithdraw 创建佣金提现
 func (s *BrokerageWithdrawService) CreateBrokerageWithdraw(ctx context.Context, userId int64, reqVO *tradeReq.AppBrokerageWithdrawCreateReqVO) (int64, error) {
-	if reqVO.Price == nil || *reqVO.Price < 0 {
-		return 0, errors.New("提现金额不能为空或小于零")
+	if err := reqVO.Validate(); err != nil {
+		return 0, err
 	}
 	price := *reqVO.Price
 	// 1.1 校验提现金额
@@ -250,7 +251,7 @@ func (s *BrokerageWithdrawService) CreateBrokerageWithdraw(ctx context.Context, 
 		UserName:            reqVO.UserName,
 		TransferChannelCode: reqVO.TransferChannelCode,
 		UserAccount:         reqVO.UserAccount,
-		BankName:            reqVO.BankName,
+		BankName:            lo.FromPtr(reqVO.BankName),
 		BankAddress:         reqVO.BankAddress,
 		QrCodeURL:           reqVO.QrCodeUrl,
 		Status:              consts.BrokerageWithdrawStatusAuditing,

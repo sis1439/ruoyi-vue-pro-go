@@ -15,8 +15,8 @@ type AppBrokerageUserBindReqVO struct {
 // AppBrokerageUserChildSummaryPageReqVO 下级分销统计分页 Request
 type AppBrokerageUserChildSummaryPageReqVO struct {
 	pagination.PageParam
-	Nickname      string `json:"nickname" form:"nickname"`                         // 下级昵称
-	Level         int    `json:"level" form:"level" binding:"omitempty,oneof=1 2"` // 分销层级
+	Nickname      string `json:"nickname" form:"nickname"`                        // 下级昵称
+	Level         int    `json:"level" form:"level" binding:"required,oneof=1 2"` // 分销层级
 	Sorting       string `json:"sortingField" form:"sortingField.field"`
 	SortingOrder  string `form:"sortingField.order"`
 	LegacySorting string `form:"sortingField"` // 排序字段: brokerageTime, userCount, brokeragePrice
@@ -25,7 +25,7 @@ type AppBrokerageUserChildSummaryPageReqVO struct {
 // AppBrokerageUserRankPageReqVO 分销用户排行分页 Request
 type AppBrokerageUserRankPageReqVO struct {
 	pagination.PageParam
-	Times []string `json:"times"` // 时间范围 [start, end]
+	Times []string `json:"times" form:"times[]" binding:"required,len=2"` // 时间范围 [start, end]
 }
 
 // AppBrokerageUserRespVO 分销用户信息 Response

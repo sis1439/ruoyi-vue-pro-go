@@ -3,6 +3,7 @@ package brokerage
 import (
 	"context"
 	"errors"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strings"
 	"time"
 
@@ -246,10 +247,9 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 // GetBrokerageUserRankPageByPrice 获得分销用户排行分页（基于佣金）
 func (s *BrokerageRecordService) GetBrokerageUserRankPageByPrice(ctx context.Context, r *trade2.AppBrokerageUserRankPageReq) (*pagination.PageResult[*trade.AppBrokerageUserRankByPriceRespVO], error) {
 	// 解析时间范围
-	var beginTime, endTime time.Time
-	if len(r.Times) >= 2 {
-		beginTime = parseTime(r.Times[0])
-		endTime = parseTime(r.Times[1])
+	beginTime, endTime, err := types.ParseTimeRange(r.Times)
+	if err != nil {
+		return nil, err
 	}
 
 	// 使用 Gen 生成的字段和表名
@@ -478,6 +478,9 @@ func (s *BrokerageRecordService) addBrokerageForLevel(ctx context.Context, user 
 func (s *BrokerageRecordService) calculatePrice(basePrice int, percent int, fixedPrice *int) int {
 	if fixedPrice != nil && *fixedPrice >= 0 {
 		return *fixedPrice
+	}
+	if basePrice <= 0 || percent <= 0 {
+		return 0
 	}
 	return basePrice * percent / 100
 }

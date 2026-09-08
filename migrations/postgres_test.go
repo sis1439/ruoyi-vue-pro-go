@@ -30,7 +30,7 @@ func TestPostgresMigrationCoverageAndRepeat(t *testing.T) {
 	require.NoError(t, err)
 	var version uint
 	require.NoError(t, db.Raw("SELECT version FROM schema_migrations").Scan(&version).Error)
-	require.Equal(t, uint(7), version)
+	require.Equal(t, uint(8), version)
 	for _, entry := range models.Models {
 		s, err := schema.Parse(entry.Model, new(sync.Map), schema.NamingStrategy{})
 		require.NoError(t, err)

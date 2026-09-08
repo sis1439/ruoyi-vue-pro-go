@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 	payreq "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	payModel "github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
@@ -12,6 +13,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/pay/client"
 	"github.com/wxlbd/ruoyi-mall-go/internal/testutil"
+	"github.com/wxlbd/ruoyi-mall-go/migrations"
 	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/database"
 	"go.uber.org/zap"
@@ -293,4 +295,26 @@ func TestReviewTransferNotificationSharesTransaction(t *testing.T) {
 	if tasks != 1 {
 		t.Fatalf("duplicate transfer notifications: %d", tasks)
 	}
+}
+
+func TestJavaHistoricalExtensionClosedMigrationPostgres(t *testing.T) {
+	db := testutil.PostgreSQLAt(t, 7)
+	require.NoError(t, db.Exec("INSERT INTO pay_order(id,app_id,merchant_order_id,status,tenant_id) VALUES(900,1,'900',30,1)").Error)
+	require.NoError(t, db.Exec("INSERT INTO pay_order_extension(id,order_id,channel_id,no,status,tenant_id) VALUES(900,900,1,'closed-history',20,1)").Error)
+	pool, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, migrations.Apply(pool, 0))
+	require.NoError(t, migrations.Apply(pool, 0))
+	require.NoError(t, db.Use(&database.TenantPlugin{}))
+	q := query.Use(db)
+	ctx := pkgcontext.WithTenant(context.Background(), 1)
+	svc := &PayOrderService{q: q}
+	for range 2 {
+		require.NoError(t, q.Transaction(func(tx *query.Query) error {
+			return svc.notifyOrderClosedTx(ctx, tx, &payModel.PayChannel{ID: 1}, &client.OrderResp{OutTradeNo: "closed-history", Status: consts.PayOrderStatusClosed})
+		}))
+	}
+	var saved payModel.PayOrderExtension
+	require.NoError(t, db.WithContext(ctx).First(&saved, 900).Error)
+	require.Equal(t, consts.PayOrderStatusClosed, saved.Status)
 }

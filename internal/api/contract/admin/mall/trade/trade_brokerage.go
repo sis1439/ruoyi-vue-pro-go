@@ -72,7 +72,7 @@ type BrokerageWithdrawRejectReq struct {
 // AppBrokerageUserRankPageReq 分销用户排行分页 Request (App)
 type AppBrokerageUserRankPageReq struct {
 	pagination.PageParam
-	Times []string `form:"times[]"` // 时间范围 [start, end]
+	Times []string `form:"times[]" binding:"required,len=2"` // 时间范围 [start, end]
 }
 
 // ========== Response DTOs ==========

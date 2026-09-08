@@ -1,6 +1,9 @@
 package promotion
 
 import (
+	app "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/app/mall/promotion"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -42,7 +45,11 @@ func (h *AppArticleHandler) GetArticlePage(c *gin.Context) {
 		response.WriteBizError(c, err)
 		return
 	}
-	response.WriteSuccess(c, res)
+	list := make([]*app.AppArticleResp, 0, len(res.List))
+	for _, item := range res.List {
+		list = append(list, articleResponse(item))
+	}
+	response.WriteSuccess(c, &pagination.PageResult[*app.AppArticleResp]{List: list, Total: res.Total})
 }
 
 // GetArticle 获得文章详情
@@ -73,5 +80,12 @@ func (h *AppArticleHandler) GetArticle(c *gin.Context) {
 	// If it was queried by title, we need the actual ID for browse count update
 	_ = h.articleSvc.AddArticleBrowseCount(c, res.ID)
 
-	response.WriteSuccess(c, res)
+	response.WriteSuccess(c, articleResponse(res))
+}
+
+func articleResponse(v *promotion2.ArticleRespVO) *app.AppArticleResp {
+	if v == nil {
+		return nil
+	}
+	return &app.AppArticleResp{ID: v.ID, Title: v.Title, Author: v.Author, CategoryID: v.CategoryID, PicURL: v.PicURL, Introduction: v.Introduction, Content: v.Content, CreateTime: types.ToJsonDateTime(v.CreateTime), BrowseCount: v.BrowseCount, SpuID: v.SpuID}
 }

@@ -2,6 +2,7 @@ package promotion
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
@@ -418,23 +419,27 @@ func (s *combinationRecordService) ExpireCombinationRecord(ctx context.Context) 
 		return nil
 	}
 
+	activityIDs := make([]int64, 0, len(heads))
 	for _, head := range heads {
-		// 校验活动是否支持虚拟成团
-		activity, err := s.activitySvc.GetCombinationActivity(ctx, head.ActivityID)
-		if err != nil {
-			return err
-		}
-		if activity.VirtualGroup {
-			if err := s.handleVirtualGroupRecord(ctx, head); err != nil {
-				return err
-			}
+		activityIDs = append(activityIDs, head.ActivityID)
+	}
+	activities, err := s.activitySvc.GetCombinationActivityMap(ctx, activityIDs)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, head := range heads {
+		activity := activities[head.ActivityID]
+		if activity != nil && activity.VirtualGroup {
+			err = s.handleVirtualGroupRecord(ctx, head)
 		} else {
-			if err := s.handleExpireRecord(ctx, head); err != nil {
-				return err
-			}
+			err = s.handleExpireRecord(ctx, head)
+		}
+		if err != nil {
+			failures = append(failures, fmt.Errorf("expire combination %d: %w", head.ID, err))
 		}
 	}
-	return nil
+	return stderrors.Join(failures...)
 }
 
 func (s *combinationRecordService) handleExpireRecord(ctx context.Context, head *promotion.PromotionCombinationRecord) error {

@@ -9,8 +9,6 @@ type DictDataResp struct {
 type DeliveryExpressResp struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
-	Code string `json:"code"`
-	Logo string `json:"logo"`
 }
 type DeliveryPickUpStoreResp struct {
 	ID            int64    `json:"id"`
@@ -27,11 +25,7 @@ type DeliveryPickUpStoreResp struct {
 	Distance      *float64 `json:"distance"`
 }
 type AfterSaleLogResp struct {
-	ID           int64              `json:"id"`
-	AfterSaleID  int64              `json:"afterSaleId"`
-	BeforeStatus int                `json:"beforeStatus"`
-	AfterStatus  int                `json:"afterStatus"`
-	OperateType  int                `json:"operateType"`
-	Content      string             `json:"content"`
-	CreateTime   types.JsonDateTime `json:"createTime"`
+	ID         int64              `json:"id"`
+	Content    string             `json:"content"`
+	CreateTime types.JsonDateTime `json:"createTime"`
 }

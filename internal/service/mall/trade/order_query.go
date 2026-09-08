@@ -2,9 +2,11 @@ package trade
 
 import (
 	"context"
+	stderrors "errors"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/pkg/area"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
+	"gorm.io/gorm"
 	"time"
 
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
@@ -315,7 +317,7 @@ func (s *TradeOrderQueryService) FillAppOrderDetail(ctx context.Context, order *
 	}
 	if order.LogisticsID > 0 {
 		express, err := s.deliveryExpressSvc.GetDeliveryExpress(ctx, order.LogisticsID)
-		if err != nil {
+		if err != nil && !stderrors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
 		if express != nil {
