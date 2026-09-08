@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"gopkg.in/gomail.v2"
@@ -23,42 +24,10 @@ import (
 
 type MailService struct {
 	db *gorm.DB
-	// Caches
-	accountCache  map[int64]*model.SystemMailAccount
-	templateCache map[string]*model.SystemMailTemplate
-	mu            sync.RWMutex
 }
 
 func NewMailService(db *gorm.DB) *MailService {
-	s := &MailService{
-		db: db,
-	}
-	s.RefreshCache()
-	return s
-}
-
-// RefreshCache 刷新缓存
-func (s *MailService) RefreshCache() {
-	// Accounts
-	var accounts []model.SystemMailAccount
-	s.db.Find(&accounts)
-	accountMap := make(map[int64]*model.SystemMailAccount)
-	for i := range accounts {
-		accountMap[accounts[i].ID] = &accounts[i]
-	}
-
-	// Templates
-	var templates []model.SystemMailTemplate
-	s.db.Find(&templates)
-	templateMap := make(map[string]*model.SystemMailTemplate)
-	for i := range templates {
-		templateMap[templates[i].Code] = &templates[i]
-	}
-
-	s.mu.Lock()
-	s.accountCache = accountMap
-	s.templateCache = templateMap
-	s.mu.Unlock()
+	return &MailService{db: db}
 }
 
 // ================= Mail Account CRUD =================
@@ -76,7 +45,6 @@ func (s *MailService) CreateMailAccount(ctx context.Context, r *system.MailAccou
 	if err := s.db.WithContext(ctx).Create(account).Error; err != nil {
 		return 0, err
 	}
-	s.RefreshCache()
 	return account.ID, nil
 }
 
@@ -98,7 +66,6 @@ func (s *MailService) UpdateMailAccount(ctx context.Context, r *system.MailAccou
 	if err := s.db.WithContext(ctx).Updates(account).Error; err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -112,7 +79,6 @@ func (s *MailService) DeleteMailAccount(ctx context.Context, id int64) error {
 	if err := s.db.WithContext(ctx).Delete(&model.SystemMailAccount{}, id).Error; err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -127,7 +93,9 @@ func (s *MailService) DeleteMailAccountList(ctx context.Context, ids []int64) er
 
 func (s *MailService) validateMailAccountCanDelete(ctx context.Context, id int64) error {
 	var count int64
-	s.db.WithContext(ctx).Model(&model.SystemMailTemplate{}).Where("account_id = ?", id).Count(&count)
+	if err := s.db.WithContext(ctx).Model(&model.SystemMailTemplate{}).Where("account_id = ?", id).Count(&count).Error; err != nil {
+		return err
+	}
 	if count > 0 {
 		return consts.ErrMailAccountRelateTemplateExists
 	}
@@ -135,8 +103,15 @@ func (s *MailService) validateMailAccountCanDelete(ctx context.Context, id int64
 }
 
 func (s *MailService) GetMailAccount(ctx context.Context, id int64) (*model.SystemMailAccount, error) {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return nil, fmt.Errorf("trusted tenant required")
+	}
+	if s.db == nil {
+		return nil, fmt.Errorf("mail database unavailable")
+	}
 	var account model.SystemMailAccount
-	if err := s.db.WithContext(ctx).First(&account, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("tenant_id = ?", tenant).First(&account, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, consts.ErrMailAccountNotExists
 		}
@@ -194,7 +169,6 @@ func (s *MailService) CreateMailTemplate(ctx context.Context, r *system.MailTemp
 	if err := s.db.WithContext(ctx).Create(template).Error; err != nil {
 		return 0, err
 	}
-	s.RefreshCache()
 	return template.ID, nil
 }
 
@@ -222,7 +196,6 @@ func (s *MailService) UpdateMailTemplate(ctx context.Context, r *system.MailTemp
 	if err := s.db.WithContext(ctx).Updates(template).Error; err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -230,7 +203,6 @@ func (s *MailService) DeleteMailTemplate(ctx context.Context, id int64) error {
 	if err := s.db.WithContext(ctx).Delete(&model.SystemMailTemplate{}, id).Error; err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -238,7 +210,6 @@ func (s *MailService) DeleteMailTemplateList(ctx context.Context, ids []int64) e
 	if err := s.db.WithContext(ctx).Delete(&model.SystemMailTemplate{}, ids).Error; err != nil {
 		return err
 	}
-	s.RefreshCache()
 	return nil
 }
 
@@ -337,12 +308,20 @@ func (s *MailService) parseTemplateTitleAndContentParams(title, content string) 
 
 // SendSingleMail 发送单条邮件 (核心逻辑)
 func (s *MailService) SendSingleMail(ctx context.Context, toMails, ccMails, bccMails []string, userID int64, userType int, templateCode string, params map[string]interface{}) (int64, error) {
-	// 1. 获取模板
-	s.mu.RLock()
-	template, ok := s.templateCache[templateCode]
-	s.mu.RUnlock()
-	if !ok || template == nil {
-		return 0, consts.ErrMailTemplateNotExists
+	// Resolve both records for this request; never cache templates globally by code.
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return 0, fmt.Errorf("trusted tenant required")
+	}
+	if s.db == nil {
+		return 0, fmt.Errorf("mail database unavailable")
+	}
+	var template model.SystemMailTemplate
+	if err := s.db.WithContext(ctx).Where("tenant_id = ? AND code = ?", tenant, templateCode).First(&template).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, consts.ErrMailTemplateNotExists
+		}
+		return 0, err
 	}
 	// 模板开启状态校验
 	if template.Status != 0 { // CommonStatus: 0=ENABLE
@@ -364,16 +343,14 @@ func (s *MailService) SendSingleMail(ctx context.Context, toMails, ccMails, bccM
 	}
 
 	// 3. 校验参数
-	if err := s.validateTemplateParams(template, params); err != nil {
+	if err := s.validateTemplateParams(&template, params); err != nil {
 		return 0, err
 	}
 
-	// 4. 获取账户
-	s.mu.RLock()
-	account, ok := s.accountCache[template.AccountID]
-	s.mu.RUnlock()
-	if !ok || account == nil {
-		return 0, consts.ErrMailAccountNotExists
+	// The account must belong to the same trusted tenant as the selected template.
+	account, err := s.GetMailAccount(ctx, template.AccountID)
+	if err != nil {
+		return 0, err
 	}
 
 	// 5. 渲染内容
@@ -387,8 +364,12 @@ func (s *MailService) SendSingleMail(ctx context.Context, toMails, ccMails, bccM
 	}
 
 	// 6. 构造日志 (先行构造以获取 ID，且即使发送失败也会记录)
-	paramsStr, _ := json.Marshal(params)
+	paramsStr, err := json.Marshal(params)
+	if err != nil {
+		return 0, err
+	}
 	log := &model.SystemMailLog{
+		TenantBaseDO:     model.TenantBaseDO{TenantID: tenant},
 		UserID:           userID,
 		UserType:         userType,
 		ToMails:          model.StringListFromCSV(toMails),
@@ -423,7 +404,7 @@ func (s *MailService) SendSingleMail(ctx context.Context, toMails, ccMails, bccM
 		updateData["send_status"] = consts.MailSendStatusSuccess
 		updateData["send_message_id"] = messageID
 	}
-	s.db.WithContext(ctx).Model(log).Updates(updateData)
+	err = stderrors.Join(err, s.db.WithContext(ctx).Model(log).Updates(updateData).Error)
 
 	return log.ID, err
 }
@@ -442,21 +423,19 @@ func (s *MailService) validateTemplateParams(template *model.SystemMailTemplate,
 }
 
 func (s *MailService) getUserMail(ctx context.Context, userID int64, userType int) (string, error) {
-	if userType == consts.UserTypeAdmin {
-		var user model.SystemUser
-		if err := s.db.WithContext(ctx).Table("system_users").Select("email").Where("id = ?", userID).Scan(&user.Email).Error; err != nil {
-			return "", nil
-		}
-		return user.Email, nil
-	} else if userType == consts.UserTypeMember {
-		// 会员用户暂无 email 字段，对齐模型
-		var email string
-		if err := s.db.WithContext(ctx).Table("member_user").Select("email").Where("id = ?", userID).Scan(&email).Error; err != nil {
-			return "", nil
-		}
-		return email, nil
+	if userType != consts.UserTypeAdmin {
+		// MemberUser has no email field. Callers must provide an explicit recipient.
+		return "", consts.ErrMailSendMailNotExists
 	}
-	return "", nil
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return "", fmt.Errorf("trusted tenant required")
+	}
+	var user model.SystemUser
+	if err := s.db.WithContext(ctx).Select("email").Where("tenant_id = ? AND id = ?", tenant, userID).First(&user).Error; err != nil {
+		return "", err
+	}
+	return user.Email, nil
 }
 
 func (s *MailService) doSend(account *model.SystemMailAccount, toMails, ccMails, bccMails []string, nickname, subject, body string) (string, error) {

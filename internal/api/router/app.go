@@ -75,7 +75,7 @@ func RegisterAppRoutes(engine *gin.Engine,
 			}
 
 			// Sign-in Record (App)
-			signInGroup := memberGroup.Group("/sign-in/record")
+			signInGroup := memberGroup.Group("/sign-in/record", middleware.Auth())
 			{
 				signInGroup.GET("/get-summary", handlers.Member.SignInRecord.GetSignInRecordSummary)
 				signInGroup.POST("/create", handlers.Member.SignInRecord.CreateSignInRecord)
@@ -284,7 +284,7 @@ func RegisterAppRoutes(engine *gin.Engine,
 			}
 
 			// Kefu Message
-			kefuMessageGroup := promotionGroup.Group("/kefu-message")
+			kefuMessageGroup := promotionGroup.Group("/kefu-message", middleware.Auth())
 			{
 				kefuMessageGroup.POST("/send", handlers.Mall.Promotion.Kefu.SendMessage)
 				kefuMessageGroup.PUT("/update-read-status", handlers.Mall.Promotion.Kefu.UpdateMessageReadStatus)

@@ -82,8 +82,8 @@ func (s *SmsSendService) SendSingleSms(ctx context.Context, mobile string, userI
 	// 7. 创建发送日志（根据 isSend 标志设置不同的状态）
 	sendLogId, err := s.smsLogSvc.CreateSmsLogWithStatus(ctx, mobile, userId, userType, isSend, template, content, templateParams)
 	if err != nil {
-		zap.L().Error("Create SMS log failed", zap.Error(err))
-		return 0, err
+		zap.L().Error("Create SMS log failed")
+		return 0, fmt.Errorf("SMS audit unavailable")
 	}
 
 	// 8. 只有当 isSend=true 时，才调用 Client 发送短信
@@ -96,7 +96,7 @@ func (s *SmsSendService) SendSingleSms(ctx context.Context, mobile string, userI
 	smsClient, err := s.factory.CreateOrUpdateClient(channel)
 	if err != nil {
 		s.updateLogSendFail(ctx, sendLogId, fmt.Errorf("短信客户端初始化失败: %w", err))
-		return sendLogId, fmt.Errorf("短信客户端初始化失败: %w", err)
+		return sendLogId, fmt.Errorf("SMS client unavailable")
 	}
 
 	// 10. 执行发送
@@ -105,7 +105,7 @@ func (s *SmsSendService) SendSingleSms(ctx context.Context, mobile string, userI
 	// 11. 更新日志
 	if err != nil {
 		s.updateLogSendFail(ctx, sendLogId, err)
-		return sendLogId, err
+		return sendLogId, fmt.Errorf("SMS delivery failed")
 	}
 	s.updateLogSendSuccess(ctx, sendLogId, sendResp)
 
@@ -158,7 +158,7 @@ func (s *SmsSendService) updateLogSendFail(ctx context.Context, logId int64, err
 	updates := map[string]any{
 		"send_status":  consts.SmsSendStatusFailure,
 		"send_time":    now,
-		"api_send_msg": err.Error(),
+		"api_send_msg": "SMS delivery failed",
 	}
 	_ = s.smsLogSvc.UpdateSmsLogFields(ctx, logId, updates)
 }

@@ -3,12 +3,16 @@ package system
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"image"
 	"image/draw"
 	"image/png"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,6 +120,14 @@ type GenerateResult struct {
 
 // Generate 生成滑动验证码
 func (s *CaptchaService) Generate(ctx context.Context) (*GenerateResult, error) {
+	if _, ok := pkgContext.TenantID(ctx); !ok {
+		return nil, fmt.Errorf("trusted tenant required")
+	}
+	if s.rdb == nil {
+		return nil, fmt.Errorf("captcha unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
 	// 确保初始化
 	if err := s.init(); err != nil {
 		return nil, fmt.Errorf("初始化验证码生成器失败: %w", err)
@@ -146,8 +158,11 @@ func (s *CaptchaService) Generate(ctx context.Context) (*GenerateResult, error) 
 		return nil, fmt.Errorf("序列化验证码数据失败: %w", err)
 	}
 
-	key := CaptchaKeyPrefix + token
-	if err := s.rdb.Set(ctx, key, dataBytes, CaptchaTTL).Err(); err != nil {
+	key, err := captchaKey(ctx, CaptchaKeyPrefix, token)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.rdb.WithTimeout(time.Second).Set(ctx, key, dataBytes, CaptchaTTL).Err(); err != nil {
 		return nil, fmt.Errorf("存储验证码数据失败: %w", err)
 	}
 
@@ -191,10 +206,18 @@ func (s *CaptchaService) Generate(ctx context.Context) (*GenerateResult, error) 
 // 注意：aj-captcha 前端滑块验证只提交 X 坐标（滑动距离），Y 坐标固定为 5
 // 因此只需校验 X 坐标是否在容差范围内
 func (s *CaptchaService) Verify(ctx context.Context, token string, x, y int) (bool, error) {
-	key := CaptchaKeyPrefix + token
+	key, err := captchaKey(ctx, CaptchaKeyPrefix, token)
+	if err != nil {
+		return false, err
+	}
+	if s.rdb == nil {
+		return false, fmt.Errorf("captcha unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
 
 	// 从 Redis 获取答案
-	dataBytes, err := s.rdb.Get(ctx, key).Bytes()
+	dataBytes, err := s.rdb.WithTimeout(time.Second).GetDel(ctx, key).Bytes()
 	if err != nil {
 		if err == redis.Nil {
 			return false, nil // 验证码不存在或已过期
@@ -202,8 +225,7 @@ func (s *CaptchaService) Verify(ctx context.Context, token string, x, y int) (bo
 		return false, fmt.Errorf("获取验证码数据失败: %w", err)
 	}
 
-	// 删除验证码（防止重放攻击）
-	s.rdb.Del(ctx, key)
+	// GETDEL consumes the challenge atomically, including an incorrect attempt.
 
 	// 解析答案
 	var data CaptchaData
@@ -213,10 +235,81 @@ func (s *CaptchaService) Verify(ctx context.Context, token string, x, y int) (bo
 
 	// 只校验 X 坐标（滑块验证只需要水平方向的位置）
 	// 使用容差范围判断：|用户X - 正确X| <= padding
+	if x < 0 || x > CaptchaImageWidth {
+		return false, nil
+	}
 	diff := x - data.X
 	if diff < 0 {
 		diff = -diff
 	}
 	valid := diff <= CaptchaValidatePadding
 	return valid, nil
+}
+
+func captchaKey(ctx context.Context, prefix, token string) (string, error) {
+	tenant, ok := pkgContext.TenantID(ctx)
+	if !ok {
+		return "", fmt.Errorf("trusted tenant required")
+	}
+	id, err := uuid.Parse(token)
+	if err != nil || id.String() != token {
+		return "", fmt.Errorf("invalid captcha token")
+	}
+	return fmt.Sprintf("%s%d:%s", prefix, tenant, token), nil
+}
+
+// Check preserves aj-captcha's token---pointJson verification contract.
+func (s *CaptchaService) Check(ctx context.Context, token, pointJSON string) (bool, error) {
+	var point struct {
+		X *float64 `json:"x"`
+		Y *float64 `json:"y"`
+	}
+	if len(pointJSON) > 256 || json.Unmarshal([]byte(pointJSON), &point) != nil || point.X == nil || point.Y == nil || *point.X < 0 || *point.X > CaptchaImageWidth || *point.Y < 0 || *point.Y > CaptchaImageHeight {
+		return false, fmt.Errorf("invalid captcha point")
+	}
+	valid, err := s.Verify(ctx, token, int(*point.X), int(*point.Y))
+	if err != nil || !valid {
+		return valid, err
+	}
+	key, err := captchaKey(ctx, "captcha:verified:", token)
+	if err != nil {
+		return false, err
+	}
+	digest := sha256.Sum256([]byte(token + "---" + pointJSON))
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if err := s.rdb.WithTimeout(time.Second).Set(ctx, key, digest[:], 2*time.Minute).Err(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// ConsumeVerification rejects absent, altered, expired, cross-tenant or reused proofs.
+// The caller decides whether captcha is optional; a supplied value must always pass.
+func (s *CaptchaService) ConsumeVerification(ctx context.Context, verification string) error {
+	if len(verification) > 512 {
+		return fmt.Errorf("invalid captcha verification")
+	}
+	token, _, ok := strings.Cut(verification, "---")
+	if !ok {
+		return fmt.Errorf("invalid captcha verification")
+	}
+	key, err := captchaKey(ctx, "captcha:verified:", token)
+	if err != nil {
+		return err
+	}
+	if s.rdb == nil {
+		return fmt.Errorf("captcha unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	proof, err := s.rdb.WithTimeout(time.Second).GetDel(ctx, key).Bytes()
+	if err != nil {
+		return fmt.Errorf("captcha verification unavailable or expired")
+	}
+	digest := sha256.Sum256([]byte(verification))
+	if subtle.ConstantTimeCompare(proof, digest[:]) != 1 {
+		return fmt.Errorf("invalid captcha verification")
+	}
+	return nil
 }

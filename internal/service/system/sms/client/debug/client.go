@@ -31,11 +31,7 @@ func (c *SmsClient) GetCode() string {
 }
 
 func (c *SmsClient) SendSms(ctx context.Context, mobile string, apiTemplateId string, templateParams []client.KeyValue) (*client.SmsSendResp, error) {
-	zap.L().Info("Debug Sms Client Send Sms",
-		zap.String("mobile", mobile),
-		zap.String("apiTemplateId", apiTemplateId),
-		zap.Any("params", templateParams),
-	)
+	zap.L().Info("Debug SMS send simulated")
 	return &client.SmsSendResp{
 		ApiSendCode:  "SUCCESS",
 		ApiSendMsg:   "Debug Send Success",

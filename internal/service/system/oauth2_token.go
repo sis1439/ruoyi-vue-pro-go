@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/cache"
+	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/utils"
 )
@@ -58,7 +59,7 @@ func (s *OAuth2TokenService) CreateAccessToken(ctx context.Context, userId int64
 	if err != nil {
 		return nil, err
 	}
-	refreshToken, err := utils.GenerateTokenWithInfo(userId, userType, tenantId, nickname, refreshDuration)
+	refreshToken, err := utils.GenerateTypedToken(userId, userType, tenantId, nickname, utils.TokenRefresh, refreshDuration)
 	if err != nil {
 		return nil, err
 	}
@@ -81,101 +82,106 @@ func (s *OAuth2TokenService) CreateAccessToken(ctx context.Context, userId int64
 		return nil, err
 	}
 
-	// 6. 同时存储 RefreshToken 到 Redis
-	refreshTokenDO := &OAuth2AccessToken{
-		AccessToken:  refreshToken,
-		RefreshToken: refreshToken,
-		UserID:       userId,
-		UserType:     userType,
-		TenantID:     tenantId,
-		UserInfo:     userInfo,
-		ClientID:     "default",
-		Scopes:       []string{},
-		ExpiresTime:  time.Now().Add(refreshDuration),
-	}
-	if err := s.setAccessTokenToRedis(ctx, refreshTokenDO); err != nil {
-		return nil, err
-	}
-
 	return tokenDO, nil
 }
 
 // GetAccessToken 获取访问令牌
-func (s *OAuth2TokenService) GetAccessToken(ctx context.Context, accessToken string) (*OAuth2AccessToken, error) {
+func (s *OAuth2TokenService) GetAccessToken(ctx context.Context, token string) (*OAuth2AccessToken, error) {
+	return s.getToken(ctx, token, utils.TokenAccess)
+}
+func (s *OAuth2TokenService) GetRefreshToken(ctx context.Context, token string, userType int) (*OAuth2AccessToken, error) {
+	result, err := s.getToken(ctx, token, utils.TokenRefresh)
+	if err != nil {
+		return nil, err
+	}
+	if result.UserType != userType {
+		return nil, errors.NewBizError(401, "用户类型不匹配")
+	}
+	return result, nil
+}
+func (s *OAuth2TokenService) getToken(ctx context.Context, token, kind string) (*OAuth2AccessToken, error) {
+	claims, err := utils.ParseTypedToken(token, kind)
+	if err != nil {
+		return nil, err
+	}
+	if tenant, ok := pkgContext.TenantID(ctx); ok && tenant != claims.TenantID {
+		return nil, errors.NewBizError(403, "租户不匹配")
+	}
 	if cache.RDB == nil {
-		return nil, nil
+		return nil, errors.NewBizError(503, "认证服务不可用")
 	}
-
-	redisKey := fmt.Sprintf(RedisKeyOAuth2AccessToken, accessToken)
-	data, err := cache.RDB.Get(ctx, redisKey).Result()
-	if err != nil {
-		return nil, nil // Token 不存在
-	}
-
-	var tokenDO OAuth2AccessToken
-	if err := json.Unmarshal([]byte(data), &tokenDO); err != nil {
-		return nil, err
-	}
-
-	// 检查是否过期
-	if time.Now().After(tokenDO.ExpiresTime) {
-		return nil, nil
-	}
-
-	return &tokenDO, nil
-}
-
-// CheckAccessToken 校验访问令牌
-func (s *OAuth2TokenService) CheckAccessToken(ctx context.Context, accessToken string) (*OAuth2AccessToken, error) {
-	tokenDO, err := s.GetAccessToken(ctx, accessToken)
+	data, err := cache.RDB.Get(ctx, tokenKey(token, kind)).Bytes()
 	if err != nil {
 		return nil, err
 	}
-	if tokenDO == nil {
-		return nil, errors.NewBizError(401, "访问令牌不存在或已过期")
+	var result OAuth2AccessToken
+	if err = json.Unmarshal(data, &result); err != nil {
+		return nil, err
 	}
-	return tokenDO, nil
+	stored := result.AccessToken
+	if kind == utils.TokenRefresh {
+		stored = result.RefreshToken
+	}
+	if stored != token || result.UserID != claims.UserID || result.UserType != claims.UserType || result.TenantID != claims.TenantID {
+		return nil, errors.NewBizError(401, "令牌无效")
+	}
+	return &result, nil
+}
+func tokenKey(token, kind string) string {
+	if kind == utils.TokenRefresh {
+		return "oauth2_refresh_token:" + token
+	}
+	return fmt.Sprintf(RedisKeyOAuth2AccessToken, token)
+}
+func (s *OAuth2TokenService) CheckAccessToken(ctx context.Context, token string) (*OAuth2AccessToken, error) {
+	return s.GetAccessToken(ctx, token)
+}
+func (s *OAuth2TokenService) RemoveAccessToken(ctx context.Context, token string) (*OAuth2AccessToken, error) {
+	record, err := s.GetAccessToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	if err = cache.RDB.Del(ctx, tokenKey(record.AccessToken, utils.TokenAccess), tokenKey(record.RefreshToken, utils.TokenRefresh)).Err(); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
-// RemoveAccessToken 删除访问令牌
-func (s *OAuth2TokenService) RemoveAccessToken(ctx context.Context, accessToken string) (*OAuth2AccessToken, error) {
-	// 1. 获取令牌信息
-	tokenDO, _ := s.GetAccessToken(ctx, accessToken)
-
-	// 2. 从 Redis 删除
-	if cache.RDB != nil {
-		redisKey := fmt.Sprintf(RedisKeyOAuth2AccessToken, accessToken)
-		cache.RDB.Del(ctx, redisKey)
+// RefreshAccessToken atomically consumes the refresh credential and revokes its access token.
+// If new issuance fails, the session remains revoked (fail closed).
+func (s *OAuth2TokenService) RefreshAccessToken(ctx context.Context, token string, userId int64, userType int, tenantId int64, userInfo map[string]string) (*OAuth2AccessToken, error) {
+	old, err := s.GetRefreshToken(ctx, token, userType)
+	if err != nil {
+		return nil, err
 	}
-
-	return tokenDO, nil
-}
-
-// RefreshAccessToken 刷新访问令牌
-func (s *OAuth2TokenService) RefreshAccessToken(ctx context.Context, refreshToken string, userId int64, userType int, tenantId int64, userInfo map[string]string) (*OAuth2AccessToken, error) {
-	// 直接创建新的访问令牌
+	if old.UserID != userId || old.TenantID != tenantId {
+		return nil, errors.NewBizError(401, "身份不匹配")
+	}
+	n, err := cache.RDB.Eval(ctx, `if redis.call("EXISTS",KEYS[1]) == 0 then return 0 end; redis.call("DEL",KEYS[1],KEYS[2]); return 1`, []string{tokenKey(token, utils.TokenRefresh), tokenKey(old.AccessToken, utils.TokenAccess)}).Int()
+	if err != nil {
+		return nil, err
+	}
+	if n != 1 {
+		return nil, errors.NewBizError(401, "刷新令牌已使用或撤销")
+	}
 	return s.CreateAccessToken(ctx, userId, userType, tenantId, userInfo)
 }
-
-// setAccessTokenToRedis 将令牌存储到 Redis
-func (s *OAuth2TokenService) setAccessTokenToRedis(ctx context.Context, tokenDO *OAuth2AccessToken) error {
+func (s *OAuth2TokenService) setAccessTokenToRedis(ctx context.Context, record *OAuth2AccessToken) error {
 	if cache.RDB == nil {
-		return nil // Redis 不可用时跳过
+		return errors.NewBizError(503, "认证服务不可用")
 	}
-
-	redisKey := fmt.Sprintf(RedisKeyOAuth2AccessToken, tokenDO.AccessToken)
-
-	// 序列化
-	data, err := json.Marshal(tokenDO)
+	data, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
-
-	// 计算剩余过期时间
-	ttl := time.Until(tokenDO.ExpiresTime)
-	if ttl <= 0 {
-		return nil
+	access, err := utils.ParseToken(record.AccessToken)
+	if err != nil {
+		return err
 	}
-
-	return cache.RDB.Set(ctx, redisKey, string(data), ttl).Err()
+	refresh, err := utils.ParseTypedToken(record.RefreshToken, utils.TokenRefresh)
+	if err != nil {
+		return err
+	}
+	// Both whitelist entries become visible in one atomic Redis operation.
+	return cache.RDB.Eval(ctx, `redis.call("SET",KEYS[1],ARGV[1],"PX",ARGV[2]); redis.call("SET",KEYS[2],ARGV[1],"PX",ARGV[3]); return 1`, []string{tokenKey(record.AccessToken, utils.TokenAccess), tokenKey(record.RefreshToken, utils.TokenRefresh)}, string(data), time.Until(access.ExpiresAt.Time).Milliseconds(), time.Until(refresh.ExpiresAt.Time).Milliseconds()).Err()
 }

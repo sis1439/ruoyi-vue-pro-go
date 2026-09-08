@@ -192,3 +192,17 @@ func (h *AuthHandler) SocialLogin(c *gin.Context) {
 	}
 	response.WriteSuccess(c, resp)
 }
+
+func (h *AuthHandler) InspectTenant(c *gin.Context) {
+	target, err := strconv.ParseInt(c.Query("targetTenantId"), 10, 64)
+	if err != nil || target <= 0 {
+		response.WriteError(c, 400, "targetTenantId必须为正数")
+		return
+	}
+	result, err := h.svc.InspectTenant(c.Request.Context(), target)
+	if err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
+	response.WriteSuccess(c, result)
+}

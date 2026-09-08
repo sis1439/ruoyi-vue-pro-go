@@ -15,6 +15,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/pkg/file"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 
 	"github.com/samber/lo"
@@ -33,18 +34,46 @@ func NewFileService(q *query.Query, fileConfigService *FileConfigService) *FileS
 }
 
 // GenerateUploadPath 生成上传路径（用于预签名上传）
-func (s *FileService) GenerateUploadPath(name string, directory string) (string, error) {
+func (s *FileService) GenerateUploadPath(ctx context.Context, name string, directory string) (string, error) {
 	if err := s.validateFileType(name); err != nil {
 		return "", err
 	}
 	if err := s.validatePath(directory); err != nil {
 		return "", err
 	}
-	return s.generateSafePath(name, directory), nil
+	return s.tenantPath(ctx, s.generateSafePath(name, directory), true)
 }
+
+// tenantPath validates both newly generated keys and keys returned by direct uploads.
+func (s *FileService) tenantPath(ctx context.Context, path string, addPrefix bool) (string, error) {
+	id, ok := pkgcontext.TenantID(ctx)
+	if !ok {
+		return "", errors.New("missing trusted tenant for file operation")
+	}
+	if path == "" {
+		return "", errors.New("empty file path")
+	}
+	if err := s.validatePath(path); err != nil {
+		return "", err
+	}
+	prefix := fmt.Sprintf("tenant/%d/", id)
+	if strings.HasPrefix(path, prefix) {
+		return path, nil
+	}
+	if !addPrefix || strings.HasPrefix(path, "tenant/") {
+		return "", errors.New("file belongs to another tenant")
+	}
+	return prefix + path, nil
+}
+
+const MaxFileSize = 100 * 1024 * 1024
 
 // CreateFile 上传/创建文件
 func (s *FileService) CreateFile(ctx context.Context, name string, path string, content []byte, fileType string) (string, error) {
+	safePath, err := s.GenerateUploadPath(ctx, name, path)
+	if err != nil {
+		return "", err
+	}
 	// 1. 获取 Master 配置
 	config, err := s.fileConfigService.GetMasterFileConfig(ctx)
 	if err != nil {
@@ -52,7 +81,7 @@ func (s *FileService) CreateFile(ctx context.Context, name string, path string, 
 	}
 
 	// 2. 验证文件大小（最大 100MB）
-	maxFileSize := int64(100 * 1024 * 1024)
+	maxFileSize := int64(MaxFileSize)
 	if int64(len(content)) > maxFileSize {
 		return "", fmt.Errorf("文件大小超过限制: 最大 %d MB", maxFileSize/1024/1024)
 	}
@@ -74,7 +103,6 @@ func (s *FileService) CreateFile(ctx context.Context, name string, path string, 
 	}
 
 	// 6. 生成安全路径（带防冲突时间戳）
-	safePath := s.generateSafePath(name, path)
 
 	// 7. 上传
 	url, err := client.Upload(content, safePath)
@@ -98,7 +126,7 @@ func (s *FileService) CreateFile(ctx context.Context, name string, path string, 
 	}
 	err = s.q.InfraFile.WithContext(ctx).Create(fileRecord)
 	if err != nil {
-		return "", err
+		return "", errors.Join(err, client.Delete(safePath))
 	}
 
 	return url, nil
@@ -151,7 +179,7 @@ func (s *FileService) validatePath(path string) error {
 	}
 
 	// 检查特殊字符
-	if strings.Contains(path, "\x00") {
+	if strings.ContainsAny(path, "\x00\\") || strings.Contains(path, "%") {
 		return errors.New("路径包含空字符")
 	}
 
@@ -190,21 +218,28 @@ func (s *FileService) DeleteFile(ctx context.Context, id int64) error {
 	if err != nil {
 		return errors.New("文件不存在")
 	}
+	if _, err := s.tenantPath(ctx, fileRecord.Path, false); err != nil {
+		return err
+	}
 
 	// 获取配置
 	config, err := s.fileConfigService.GetFileConfig(ctx, fileRecord.ConfigId)
 	if err != nil {
-		// 如果配置都不存在了，只删除数据库记录
-		f.WithContext(ctx).Where(f.ID.Eq(id)).Delete()
-		return nil
+		return err
 	}
 
 	// 初始化客户端并删除物理文件
 	if config.Config != nil {
-		configBytes, _ := json.Marshal(config.Config)
+		configBytes, err := json.Marshal(config.Config)
+		if err != nil {
+			return err
+		}
 		client, err := file.NewFileClient(config.ID, config.Storage, configBytes)
-		if err == nil {
-			_ = client.Delete(fileRecord.Path)
+		if err != nil {
+			return err
+		}
+		if err := client.Delete(fileRecord.Path); err != nil {
+			return err
 		}
 	}
 
@@ -218,7 +253,7 @@ func (s *FileService) DeleteFileList(ctx context.Context, ids []int64) error {
 		if err := s.DeleteFile(ctx, id); err != nil {
 			// 如果单个删除失败，记录日志并继续，对齐 Java 逻辑（Java 也是逐个删除并抛出异常，Go 这里选择继续处理以防部分删除后中断）
 			// 实际上 Java 的 deleteFileList 是调用 fileService.deleteFileList(ids)，这里我们也保持 Service 层闭环
-			continue
+			return err
 		}
 	}
 	return nil
@@ -240,6 +275,14 @@ func (s *FileService) GetFileContent(ctx context.Context, configId int64, path s
 	decodedPath, err := url.PathUnescape(path)
 	if err == nil {
 		path = decodedPath
+	}
+	path = strings.TrimPrefix(path, "/") // Gin wildcard includes its leading slash.
+	if _, err := s.tenantPath(ctx, path, false); err != nil {
+		return nil, err
+	}
+	f := s.q.InfraFile
+	if _, err := f.WithContext(ctx).Where(f.ConfigId.Eq(configId), f.Path.Eq(path)).First(); err != nil {
+		return nil, errors.New("file not found in this tenant")
 	}
 
 	config, err := s.fileConfigService.GetFileConfig(ctx, configId)
@@ -300,6 +343,13 @@ func (s *FileService) convertResp(item *model.InfraFile) *infra.FileResp {
 }
 
 func (s *FileService) GetFilePresignedUrl(ctx context.Context, path string) (*infra.FilePresignedUrlResp, error) {
+	path, err := s.tenantPath(ctx, path, true)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateFileType(path); err != nil {
+		return nil, err
+	}
 	config, err := s.fileConfigService.GetMasterFileConfig(ctx)
 	if err != nil {
 		return nil, errors.New("请先配置主文件存储")
@@ -325,10 +375,33 @@ func (s *FileService) GetFilePresignedUrl(ctx context.Context, path string) (*in
 }
 
 func (s *FileService) CreateFileCallback(ctx context.Context, req *infra.FileCreateReq) (int64, error) {
+	if _, err := s.tenantPath(ctx, req.Path, false); err != nil {
+		return 0, err
+	}
+	if err := s.validateFileType(req.Name); err != nil {
+		return 0, err
+	}
+	if err := s.validateFileType(req.Path); err != nil {
+		return 0, err
+	}
+	if req.Size < 0 || req.Size > MaxFileSize {
+		return 0, errors.New("invalid file size")
+	}
 	// 验证配置是否存在
-	_, err := s.fileConfigService.GetFileConfig(ctx, req.ConfigID)
+	config, err := s.fileConfigService.GetFileConfig(ctx, req.ConfigID)
 	if err != nil {
 		return 0, errors.New("配置不存在")
+	}
+	configBytes, err := json.Marshal(config.Config)
+	if err != nil {
+		return 0, err
+	}
+	client, err := file.NewFileClient(config.ID, config.Storage, configBytes)
+	if err != nil {
+		return 0, err
+	}
+	if req.URL != client.GetURL(req.Path) {
+		return 0, errors.New("file URL does not match storage configuration")
 	}
 
 	fileRecord := &model.InfraFile{

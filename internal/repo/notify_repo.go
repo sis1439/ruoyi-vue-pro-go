@@ -28,7 +28,7 @@ func (r *NotifyTemplateRepositoryImpl) Create(ctx context.Context, template *mod
 
 func (r *NotifyTemplateRepositoryImpl) Update(ctx context.Context, template *model.SystemNotifyTemplate) error {
 	t := r.q.SystemNotifyTemplate
-	_, err := t.WithContext(ctx).Where(t.ID.Eq(template.ID)).Updates(template)
+	_, err := t.WithContext(ctx).Where(t.ID.Eq(template.ID)).Select(t.Name, t.Code, t.Nickname, t.Content, t.Type, t.Status, t.Remark).Updates(template)
 	return err
 }
 
@@ -41,6 +41,11 @@ func (r *NotifyTemplateRepositoryImpl) Delete(ctx context.Context, id int64) err
 func (r *NotifyTemplateRepositoryImpl) FindByID(ctx context.Context, id int64) (*model.SystemNotifyTemplate, error) {
 	t := r.q.SystemNotifyTemplate
 	return t.WithContext(ctx).Where(t.ID.Eq(id)).First()
+}
+
+func (r *NotifyTemplateRepositoryImpl) FindByCode(ctx context.Context, code string) (*model.SystemNotifyTemplate, error) {
+	t := r.q.SystemNotifyTemplate
+	return t.WithContext(ctx).Where(t.Code.Eq(code)).First()
 }
 
 func (r *NotifyTemplateRepositoryImpl) Page(ctx context.Context, name, code string, status *int, pageNo, pageSize int) ([]*model.SystemNotifyTemplate, int64, error) {
