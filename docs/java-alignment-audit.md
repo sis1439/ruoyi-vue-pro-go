@@ -861,3 +861,36 @@ Go `internal/pkg/websocket/message.go:11` 的 `Content interface{}` 直接序列
 - 全量验证后补充了“缺失会员接收人或租户不得广播”的保护与断言，重新运行受影响的客服 WebSocket 回归用例（真实 PostgreSQL + WebSocket + `-race`），通过。
 - `go build ./...`、`go vet ./...` 和 `git diff --check` 通过；构建输出过本机模块缓存权限提示，退出状态为 0。
 - 本轮未执行业务库写入、真实支付 / 退款渠道、微信绑定平台或 uniapp 真机联调；本地 WebSocket 收发测试不代表公网代理、弱网与重连场景已验收。
+
+### F9 【P1，已修复】`/promotion/seckill-activity/list-by-ids` 可能返回 `null` 导致前端崩溃
+
+`internal/api/handler/app/mall/promotion/seckill_activity.go:393` 的 `GetSeckillActivityListByIds`：
+
+```go
+var activeList []promotion2.AppSeckillActivityResp   // nil slice
+for _, act := range enabledActivities {
+    spu, ok := spuMap[act.SpuID]
+    if !ok { continue }                               // SPU 查不到就跳过
+    activeList = append(activeList, ...)
+}
+response.WriteSuccess(c, activeList)                  // 全部 continue 时仍是 nil → JSON 输出 null
+```
+
+Go 的 nil slice 序列化为 `null`，Java 的空 `List` 序列化为 `[]`。
+
+前端 `sheep/components/s-seckill-block/s-seckill-block.vue:253` 直接迭代：
+
+```js
+const activityList = await getSeckillActivityDetailList(...);
+for (const activity of activityList) { ... }   // for...of null → TypeError
+```
+
+`null` 不可迭代，`onMounted` 抛错 → **首页秒杀楼层整体渲染失败**。
+
+触发条件：请求的活动 ID 存在且启用，但关联的 SPU 全部查不到（如商品被删除）。当前 `GetSpuList` 不按商品状态过滤，单纯下架不会触发此路径。`len(enabledActivities) == 0` 的分支已经正确返回了 `[]`，只有构建响应后结果为空的路径漏了。
+
+修复（2026-09-08）：使用 `activeList := make([]promotion2.AppSeckillActivityResp, 0, len(enabledActivities))` 初始化结果切片，全部 SPU 缺失时返回 `[]`，正常活动的内容与顺序不变。
+
+验证：受影响 handler 包的 `go test ./internal/api/handler/app/mall/promotion` 和 `git diff --check` 通过。本次为切片初始化修正，未新增测试或运行数据库接口联调；现有包测试不直接覆盖 F9 路径。
+
+**同类排查结论**：全项目扫描 app handler 的列表返回，仅此一处。`buildAppPointActivityRespVOList` 用了 `make(..., 0, len(...))` 安全；34 处 `PageResult{List: xxx}` 的数据来自 GORM Gen 的 `Find()`，而 GORM 的 `scan.go:293` 在 `Cap() == 0` 时会 `MakeSlice(..., 0, 20)`，返回非 nil 空 slice，因此分页接口的 `list` 不会是 `null`。

@@ -357,7 +357,7 @@ func (h *AppSeckillActivityHandler) GetSeckillActivityListByIds(c *gin.Context) 
 	}
 
 	// 4. 构建响应
-	var activeList []promotion2.AppSeckillActivityResp
+	activeList := make([]promotion2.AppSeckillActivityResp, 0, len(enabledActivities))
 	for _, act := range enabledActivities {
 		spu, ok := spuMap[act.SpuID]
 		if !ok {
