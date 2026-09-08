@@ -1,7 +1,7 @@
 # Backend Go - 芋道商城 Go 实现
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Go-1.25.4-blue.svg" alt="Go Version">
+  <img src="https://img.shields.io/badge/Go-1.26.6-blue.svg" alt="Go Version">
   <img src="https://img.shields.io/badge/Gin-1.11.0-brightgreen.svg" alt="Gin Version">
   <img src="https://img.shields.io/badge/GORM-1.25.12-orange.svg" alt="GORM Version">
 </p>
@@ -26,7 +26,7 @@
 
 ### 核心技术
 
-- **语言**: Go 1.25.4
+- **语言**: Go 1.26.6
 - **Web框架**: [Gin 1.11.0](https://github.com/gin-gonic/gin)
 - **ORM框架**: [GORM 1.31.1](https://gorm.io/)
 - **数据库**: MySQL 8.0+ (支持 MySQL 8.0+)
@@ -432,7 +432,7 @@ export REDIS_ADDR=redis:6379
 
 ### 环境要求
 
-- **Go**: 1.25.4+
+- **Go**: 1.26.6+
 - **MySQL**: 8.0+
 - **Redis**: 6.0+
 - **Make**: 构建工具
@@ -1210,7 +1210,7 @@ Copyright (c) 2025 wxlbd
 <p align="center">
   <img src="https://img.shields.io/badge/Version-1.0.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Status-Stable-success.svg" alt="Status">
-  <img src="https://img.shields.io/badge/Go-1.25.4-00ADD8.svg" alt="Go">
+  <img src="https://img.shields.io/badge/Go-1.26.6-00ADD8.svg" alt="Go">
 </p>
 
 </div>
