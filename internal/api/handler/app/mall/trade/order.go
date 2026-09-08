@@ -148,13 +148,20 @@ func (h *AppTradeOrderHandler) GetOrderDetail(c *gin.Context) {
 		response.WriteBizError(c, errors.ErrParam)
 		return
 	}
+	userId := context.GetUserId(c)
+
+	// 0. sync=true：先主动同步一次支付状态（归属与频率在 Service 内校验）
+	if c.Query("sync") == "true" {
+		_ = h.svc.SyncOrderPayStatus(c.Request.Context(), userId, id)
+	}
+
 	// 1. 获得订单
 	order, err := h.querySvc.GetOrder(c, id)
 	if err != nil {
 		response.WriteBizError(c, err)
 		return
 	}
-	if order == nil || order.UserID != context.GetUserId(c) {
+	if order == nil || order.UserID != userId {
 		response.WriteBizError(c, errors.ErrNotFound)
 		return
 	}

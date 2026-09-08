@@ -3,14 +3,19 @@ package pay
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/config"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 
 	"github.com/redis/go-redis/v9"
@@ -19,6 +24,12 @@ import (
 
 // NotifyFrequency 通知频率，单位为秒
 var NotifyFrequency = []int{15, 15, 30, 180, 1800, 1800, 1800, 3600}
+
+// notifyHTTPClient 复用连接，超时在每个请求的 Context 上控制
+var notifyHTTPClient = &http.Client{Timeout: notifyTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+// PayNotifyTokenHeader 支付中心 → 商城业务通知的内部调用令牌头
+const PayNotifyTokenHeader = "X-Pay-Notify-Token"
 
 type PayNotifyService struct {
 	q      *query.Query
@@ -36,12 +47,13 @@ func NewPayNotifyService(q *query.Query, logger *zap.Logger, rdb *redis.Client) 
 
 // CreatePayNotifyTask 创建回调通知任务
 func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int, dataId int64) error {
+	q := repo.QueryFromContext(ctx, s.q)
 	var task *pay.PayNotifyTask
 
 	// 1. Get Data by Type
 	switch typeVal {
 	case PayNotifyTypeOrder:
-		order, err := s.q.PayOrder.WithContext(ctx).Where(s.q.PayOrder.ID.Eq(dataId)).First()
+		order, err := q.PayOrder.WithContext(ctx).Where(q.PayOrder.ID.Eq(dataId)).First()
 		if err != nil {
 			return err
 		}
@@ -53,7 +65,7 @@ func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int,
 			NotifyURL:       order.NotifyURL,
 		}
 	case PayNotifyTypeRefund:
-		refund, err := s.q.PayRefund.WithContext(ctx).Where(s.q.PayRefund.ID.Eq(dataId)).First()
+		refund, err := q.PayRefund.WithContext(ctx).Where(q.PayRefund.ID.Eq(dataId)).First()
 		if err != nil {
 			return err
 		}
@@ -66,7 +78,7 @@ func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int,
 			NotifyURL:        refund.NotifyURL,
 		}
 	case PayNotifyTypeTransfer:
-		transfer, err := s.q.PayTransfer.WithContext(ctx).Where(s.q.PayTransfer.ID.Eq(dataId)).First()
+		transfer, err := q.PayTransfer.WithContext(ctx).Where(q.PayTransfer.ID.Eq(dataId)).First()
 		if err != nil {
 			return err
 		}
@@ -87,32 +99,41 @@ func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int,
 	task.NotifyTimes = 0
 	task.MaxNotifyTimes = len(NotifyFrequency) + 1
 
-	return s.q.PayNotifyTask.WithContext(ctx).Create(task)
+	return q.PayNotifyTask.WithContext(ctx).Create(task)
 }
 
+// notifyTimeout 单次通知的请求超时
+const notifyTimeout = 10 * time.Second
+
 // ExecuteNotify 执行回调通知 (Called by Job or Manually)
+// 返回尝试处理的任务数及错误；继承租户上下文与截止时间，等待当前批次落库。
 func (s *PayNotifyService) ExecuteNotify(ctx context.Context) (int, error) {
 	// 1. Query Waiting Tasks
 	now := time.Now()
 	tasks, err := s.q.PayNotifyTask.WithContext(ctx).
 		Where(s.q.PayNotifyTask.Status.Eq(PayNotifyStatusWaiting)).
 		Where(s.q.PayNotifyTask.NextNotifyTime.Lt(now)).
+		Order(s.q.PayNotifyTask.NextNotifyTime, s.q.PayNotifyTask.ID).
+		Limit(20).
 		Find()
 	if err != nil {
 		return 0, err
 	}
 
 	count := 0
+	var failures error
 	for _, task := range tasks {
-		// 异步执行每个任务
-		go func(t *pay.PayNotifyTask) {
-			if err := s.executeNotifyTaskWithLock(ctx, t); err != nil {
-				s.logger.Error("executeNotifyTask failed", zap.Int64("taskId", t.ID), zap.Error(err))
-			}
-		}(task)
+		if err := ctx.Err(); err != nil {
+			return count, errors.Join(failures, err)
+		}
+		// Finish this bounded batch before the scheduler releases its tenant context.
+		if err := s.executeNotifyTaskWithLock(ctx, task); err != nil {
+			s.logger.Error("executeNotifyTask failed", zap.Int64("taskId", task.ID), zap.Error(err))
+			failures = errors.Join(failures, err)
+		}
 		count++
 	}
-	return count, nil
+	return count, failures
 }
 
 // executeNotifyTaskWithLock 使用分布式锁执行通知任务
@@ -142,60 +163,53 @@ func (s *PayNotifyService) executeNotifyTaskWithLock(ctx context.Context, task *
 	})
 }
 
+// buildNotifyBody 按通知类型构造商城可解析的请求体
+// 对齐 Java: PayNotifyServiceImpl.executeNotifyInvoke 的 PayOrderNotifyReqDTO / PayRefundNotifyReqDTO
+func buildNotifyBody(task *pay.PayNotifyTask) ([]byte, error) {
+	switch task.Type {
+	case PayNotifyTypeOrder:
+		return json.Marshal(pay2.PayOrderNotifyReq{
+			MerchantOrderId: task.MerchantOrderId,
+			PayOrderID:      task.DataID,
+		})
+	case PayNotifyTypeRefund:
+		return json.Marshal(pay2.PayRefundNotifyReqDTO{
+			MerchantOrderId:  task.MerchantOrderId,
+			MerchantRefundId: task.MerchantRefundId,
+			PayRefundId:      task.DataID,
+		})
+	case PayNotifyTypeTransfer:
+		return json.Marshal(map[string]any{
+			"merchantTransferId": task.MerchantOrderId,
+			"payTransferId":      task.DataID,
+		})
+	default:
+		return nil, fmt.Errorf("unknown notify type: %d", task.Type)
+	}
+}
+
+// isNotifySuccess 依据统一 JSON 业务码判定接收端是否真正处理成功。
+// 商城接口返回 {"code":0,"msg":"","data":...}；HTTP 200 但 code != 0 属于业务失败，需要重试。
+func isNotifySuccess(body []byte) bool {
+	var result struct {
+		Code *int `json:"code"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil || result.Code == nil {
+		return false
+	}
+	return *result.Code == 0
+}
+
 func (s *PayNotifyService) executeNotifyTask(ctx context.Context, task *pay.PayNotifyTask) error {
 	s.logger.Info("Start PayNotifyTask", zap.Int64("taskId", task.ID), zap.String("url", task.NotifyURL))
 
-	// 1. Execute HTTP Request
-	status := PayNotifyStatusSuccess
-	responseBody := ""
-
-	// Create request body - In specific format required by merchant?
-	// Usually POST with some params. For now, assuming generic empty or simple mapping. All params are in the URL or Body?
-	// Java code uses `PayOrderNotifyReqDTO` or similar.
-	// Simplification: Sending empty body for now as `task.NotifyURL` typically contains params?
-	// Wait, standard is POST FORM or JSON. Java code uses `restTemplate.postForEntity`.
-	// For simplicity, we just POST. The real payload should be defined.
-	// But `PayNotifyTaskDO` doesn't store the content. It seems content is built dynamically from Order/Refund?
-	// Re-checking Java logic: `executeNotifyTask` calls `notifyPayOrder` -> `NotifyPayOrderReqDTO`.
-	// For now, I will send a simple JSON.
-
-	// Prepare Log
 	log := &pay.PayNotifyLog{
 		TaskID:      task.ID,
 		NotifyTimes: task.NotifyTimes + 1,
-		Status:      PayNotifyStatusSuccess, // Default
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	reqBody := []byte("{}") // TODO: Build actual payload
-	req, _ := http.NewRequest("POST", task.NotifyURL, bytes.NewBuffer(reqBody))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		status = PayNotifyStatusRequestFailure
-		log.Response = err.Error()
-	} else {
-		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Response = string(bodyBytes)
-		responseBody = string(bodyBytes)
-		if resp.StatusCode == 200 {
-			if responseBody == "SUCCESS" { // Convention check?
-				status = PayNotifyStatusSuccess
-			} else {
-				status = PayNotifyStatusRequestSuccess // Request OK but result implementation specific logic
-			}
-		} else {
-			status = PayNotifyStatusRequestFailure
-		}
-	}
-	// Note: Simple logic here. Ideally check "SUCCESS" string from merchant.
-	// Java: `if ("success".equalsIgnoreCase(response)) status = SUCCESS`
-
-	if responseBody == "success" || responseBody == "SUCCESS" {
-		status = PayNotifyStatusSuccess
-	}
+	status, responseText := s.invokeNotify(ctx, task)
+	log.Response = responseText
 
 	// 2. Update Task
 	now := time.Now()
@@ -203,11 +217,15 @@ func (s *PayNotifyService) executeNotifyTask(ctx context.Context, task *pay.PayN
 	task.NotifyTimes++
 	task.Status = status
 
-	if status == PayNotifyStatusSuccess {
-		// Done
-	} else {
+	if status != PayNotifyStatusSuccess {
 		if task.NotifyTimes >= task.MaxNotifyTimes {
+			// 重试耗尽：置为最终失败，等待人工重放；此处应触发告警
 			task.Status = PayNotifyStatusFailure
+			s.logger.Error("pay notify retries exhausted, manual replay required",
+				zap.Int64("taskId", task.ID),
+				zap.Int("type", task.Type),
+				zap.Int64("dataId", task.DataID),
+				zap.String("merchantOrderId", task.MerchantOrderId))
 		} else {
 			task.Status = PayNotifyStatusWaiting
 			nextSec := NotifyFrequency[task.NotifyTimes-1]
@@ -216,13 +234,59 @@ func (s *PayNotifyService) executeNotifyTask(ctx context.Context, task *pay.PayN
 		}
 	}
 
-	s.q.PayNotifyTask.WithContext(ctx).Save(task)
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
+		if err := tx.PayNotifyTask.WithContext(ctx).UnderlyingDB().Where("id = ?", task.ID).Select("*").Omit("id", "tenant_id", "creator", "create_time").Updates(task).Error; err != nil {
+			return err
+		}
 
-	// 3. Create Log
-	log.Status = task.Status // Use final status
-	s.q.PayNotifyLog.WithContext(ctx).Create(log)
+		// 3. Create Log
+		log.Status = task.Status // Use final status
+		return tx.PayNotifyLog.WithContext(ctx).Create(log)
+	})
+}
 
-	return nil
+// invokeNotify 发起一次通知请求，返回本次的通知状态与响应文本
+func (s *PayNotifyService) invokeNotify(ctx context.Context, task *pay.PayNotifyTask) (int, string) {
+	body, err := buildNotifyBody(task)
+	if err != nil {
+		return PayNotifyStatusRequestFailure, err.Error()
+	}
+	if _, err := url.ParseRequestURI(task.NotifyURL); err != nil {
+		return PayNotifyStatusRequestFailure, fmt.Sprintf("invalid notify url: %v", err)
+	}
+
+	if !config.C.Pay.IsTrustedNotifyURL(task.NotifyURL) {
+		return PayNotifyStatusRequestFailure, "untrusted business notification URL"
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, notifyTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, task.NotifyURL, bytes.NewReader(body))
+	if err != nil {
+		return PayNotifyStatusRequestFailure, err.Error()
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token := config.C.Pay.NotifyToken; token != "" {
+		req.Header.Set(PayNotifyTokenHeader, token)
+	}
+
+	resp, err := notifyHTTPClient.Do(req)
+	if err != nil {
+		return PayNotifyStatusRequestFailure, err.Error()
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return PayNotifyStatusRequestFailure, err.Error()
+	}
+	if resp.StatusCode != http.StatusOK {
+		return PayNotifyStatusRequestFailure, fmt.Sprintf("http %d: %s", resp.StatusCode, respBody)
+	}
+	if !isNotifySuccess(respBody) {
+		// HTTP 200 但业务码非 0：请求成功、结果失败，仍需重试
+		return PayNotifyStatusRequestSuccess, string(respBody)
+	}
+	return PayNotifyStatusSuccess, string(respBody)
 }
 
 // GetNotifyTask 获得回调通知

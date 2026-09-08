@@ -1,4 +1,4 @@
-.PHONY: all build build-linux run dev deps wire gen test verify clean help setup lint vet ci
+.PHONY: all build build-linux run dev deps wire gen test verify clean help setup test-integration lint vet ci
 
 APP_NAME = server
 CMD_PATH = cmd/server/main.go
@@ -55,6 +55,13 @@ verify: gen
 	go vet ./...
 	go test ./...
 
+# Real PostgreSQL and Redis acceptance; missing dependencies cannot produce a green run.
+test-integration: gen
+	@test -n "$(TEST_POSTGRES_DSN)" || (echo "TEST_POSTGRES_DSN required"; exit 1)
+	@test -n "$(T09_REDIS_ADDR)" || (echo "T09_REDIS_ADDR required"; exit 1)
+	go test -race -count=1 -json ./... > integration-results.jsonl
+	go run ./scripts/check-integration integration-results.jsonl
+
 vet: gen
 	go vet ./...
 
@@ -82,6 +89,7 @@ help:
 	@echo "  make gen    - Generate GORM DAO code"
 	@echo "  make test   - Generate DAO and run tests"
 	@echo "  make verify - Verify dependencies, build, vet and test"
+	@echo "  make test-integration - Run tests needing PostgreSQL + Redis"
 	@echo "  make lint   - Run golangci-lint"
 	@echo "  make ci     - gen + build + vet + test"
 	@echo "  make clean  - Clean build artifacts"

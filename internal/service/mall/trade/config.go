@@ -7,6 +7,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"gorm.io/datatypes"
 )
@@ -21,7 +22,7 @@ func NewTradeConfigService(q *query.Query) *TradeConfigService {
 
 // GetTradeConfig 获取交易配置 (Admin)
 func (s *TradeConfigService) GetTradeConfig(ctx context.Context) (*trade2.TradeConfigResp, error) {
-	qc := s.q.TradeConfig
+	qc := repo.QueryFromContext(ctx, s.q).TradeConfig
 	config, err := qc.WithContext(ctx).First()
 	if err != nil {
 		// 如果不存在，返回全默认配置
@@ -133,7 +134,7 @@ func (s *TradeConfigService) SaveTradeConfig(ctx context.Context, r *trade2.Trad
 		if len(r.BrokerageWithdrawTypes) > 0 {
 			existing.BrokerageWithdrawTypes = r.BrokerageWithdrawTypes
 		}
-		return qc.WithContext(ctx).Save(existing)
+		return qc.WithContext(ctx).UnderlyingDB().Where("id = ?", existing.ID).Select("*").Omit("id", "tenant_id", "creator", "create_time").Updates(existing).Error
 	}
 
 	// Create

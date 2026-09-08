@@ -24,3 +24,6 @@ config/*.local.yaml
 main
 cmd/server/server
 server-linux
+
+# Local integration acceptance output
+/integration-results.jsonl

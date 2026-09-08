@@ -3,6 +3,9 @@ package trade
 import (
 	"context"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/internal/model"
+	"github.com/wxlbd/ruoyi-mall-go/internal/service/member"
+	"strconv"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
@@ -86,9 +89,9 @@ func (p *CreateOrderProcessor) AfterOrderCreate(ctx context.Context, handleReq *
 
 	// 3. 扣减积分
 	if order.UsePoint > 0 {
-		if !p.memberSvc.UpdateUserPoint(ctx, order.UserID, -order.UsePoint) {
+		if err := member.NewMemberPointRecordService(p.q, nil).CreatePointRecord(ctx, order.UserID, -order.UsePoint, tradeModel.MemberPointBizTypeOrderUse, strconv.FormatInt(order.ID, 10)); err != nil {
 			p.logger.Error("扣减积分失败", zap.Int64("orderId", order.ID), zap.Int("usePoint", order.UsePoint))
-			return fmt.Errorf("扣减积分失败")
+			return err
 		}
 	}
 
@@ -138,7 +141,7 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 	if order.Status != tradeModel.TradeOrderStatusUnpaid || order.PayStatus {
 		// 特殊：支付单号相同，直接返回，说明重复回调（幂等处理）
 		// 对应 Java: if (ObjectUtil.equals(order.getPayOrderId(), payOrderId))
-		if order.PayOrderID != nil && *order.PayOrderID == handleReq.PayOrderID {
+		if order.PayStatus && order.PayOrderID != nil && *order.PayOrderID == handleReq.PayOrderID {
 			p.logger.Warn("订单已支付，且支付单号相同，直接返回",
 				zap.Int64("orderId", order.ID),
 				zap.Int64("payOrderId", handleReq.PayOrderID),
@@ -152,6 +155,9 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 			zap.Int64p("orderPayOrderId", order.PayOrderID),
 			zap.Int("status", order.Status),
 		)
+		if order.Status == tradeModel.TradeOrderStatusCanceled && !order.PayStatus {
+			return nil, fmt.Errorf("已取消订单收到付款通知，需对账退款；通知任务保留待处理")
+		}
 		return nil, fmt.Errorf("订单不处于待支付状态")
 	}
 
@@ -186,12 +192,11 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 		return nil, fmt.Errorf("支付金额不匹配")
 	}
 
-	// 4.4 校验商户订单号一致
-	if payOrder.MerchantOrderId != order.No {
+	// 4.4 校验商户订单号一致：商户订单号统一为交易主键的十进制字符串
+	if payOrder.MerchantOrderId != strconv.FormatInt(order.ID, 10) {
 		p.logger.Error("支付单商户订单号不匹配",
 			zap.Int64("orderId", order.ID),
-			zap.String("orderNo", order.No),
-			zap.String("payOrderNo", payOrder.MerchantOrderId),
+			zap.String("payOrderMerchantOrderId", payOrder.MerchantOrderId),
 		)
 		return nil, fmt.Errorf("支付单不匹配")
 	}
@@ -201,16 +206,25 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 		now := time.Now()
 		updateData := map[string]interface{}{
 			"status":           tradeModel.TradeOrderStatusUndelivered,
-			"pay_status":       true,
+			"pay_status":       model.BitBool(true),
 			"pay_time":         now,
 			"pay_channel_code": payOrder.ChannelCode, // 记录支付渠道
 			"update_time":      now,
 		}
 
-		_, err := tx.TradeOrder.WithContext(ctx).
-			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID)).
+		// 条件状态转换：只有仍处于待支付才允许置为已支付，
+		// 否则并发的取消/重复回调会把已取消订单"复活"成待发货
+		result, err := tx.TradeOrder.WithContext(ctx).
+			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID),
+				tx.TradeOrder.Status.Eq(tradeModel.TradeOrderStatusUnpaid)).
 			Updates(updateData)
-		return err
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("订单状态已变更，支付更新未生效")
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -463,10 +477,19 @@ func (p *CancelOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandl
 			"update_time":   now,
 		}
 
-		_, err := tx.TradeOrder.WithContext(ctx).
-			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID)).
+		// 条件状态转换：仅待支付订单可被取消。
+		// 超时取消任务的查询与更新之间可能已完成支付，无条件更新会造成"已收款却释放库存"
+		result, err := tx.TradeOrder.WithContext(ctx).
+			Where(tx.TradeOrder.ID.Eq(handleReq.OrderID),
+				tx.TradeOrder.Status.Eq(tradeModel.TradeOrderStatusUnpaid)).
 			Updates(updateData)
-		return err
+		if err != nil {
+			return err
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("订单状态已变更，取消未生效")
+		}
+		return nil
 	})
 
 	if err != nil {
@@ -525,7 +548,7 @@ func (p *CancelOrderProcessor) AfterCancelOrder(ctx context.Context, handleReq *
 
 	// 2. 退还优惠券
 	if order.CouponID > 0 {
-		if err := p.couponSvc.ReturnCoupon(ctx, order.UserID, order.CouponID); err != nil {
+		if err := p.couponSvc.ReturnCouponForOrder(ctx, order.UserID, order.CouponID, order.ID); err != nil {
 			p.logger.Error("退还优惠券失败", zap.Error(err), zap.Int64("orderId", order.ID), zap.Int64("couponId", order.CouponID))
 			return err
 		}
@@ -533,9 +556,9 @@ func (p *CancelOrderProcessor) AfterCancelOrder(ctx context.Context, handleReq *
 
 	// 3. 退还积分
 	if order.UsePoint > 0 {
-		if !p.memberSvc.UpdateUserPoint(ctx, order.UserID, order.UsePoint) {
+		if err := member.NewMemberPointRecordService(p.q, nil).CreatePointRecord(ctx, order.UserID, order.UsePoint, tradeModel.MemberPointBizTypeOrderUseCancel, strconv.FormatInt(order.ID, 10)); err != nil {
 			p.logger.Error("退还积分失败", zap.Int64("orderId", order.ID), zap.Int("usePoint", order.UsePoint))
-			return fmt.Errorf("退还积分失败")
+			return err
 		}
 	}
 

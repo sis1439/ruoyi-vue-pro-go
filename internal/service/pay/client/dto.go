@@ -34,6 +34,7 @@ type OrderResp struct {
 	OutTradeNo       string      `json:"outTradeNo"`       // 外部订单号
 	ChannelOrderNo   string      `json:"channelOrderNo"`   // 支付渠道编号
 	ChannelUserID    string      `json:"channelUserId"`    // 支付渠道用户编号
+	Price            int         `json:"price"`            // 渠道订单金额，单位：分；成功结果必须为正且与本地一致
 	SuccessTime      time.Time   `json:"successTime"`      // 支付成功时间
 	RawData          interface{} `json:"rawData"`          // 原始的同步/异步通知结果
 	DisplayMode      string      `json:"displayMode"`      // 展示模式

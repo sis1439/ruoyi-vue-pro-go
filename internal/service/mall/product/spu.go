@@ -2,12 +2,14 @@ package product
 
 import (
 	"context"
+	"fmt"
 
 	product2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	product3 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/app/mall/product"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/product"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 
@@ -41,6 +43,9 @@ func mergeVirtualSalesCount(spu *product.ProductSpu) {
 
 // CreateSpu 创建 SPU
 func (s *ProductSpuService) CreateSpu(ctx context.Context, req *product2.ProductSpuSaveReq) (int64, error) {
+	if req == nil || req.SpecType == nil || req.SubCommissionType == nil {
+		return 0, fmt.Errorf("商品规格参数不能为空")
+	}
 	// 校验分类
 	if err := s.categorySvc.ValidateCategory(ctx, req.CategoryID); err != nil {
 		return 0, err
@@ -83,7 +88,7 @@ func (s *ProductSpuService) CreateSpu(ctx context.Context, req *product2.Product
 	s.initSpuFromSkus(spu, req.Skus)
 
 	// 事务执行
-	err := s.q.Transaction(func(tx *query.Query) error {
+	err := repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		if err := tx.ProductSpu.WithContext(ctx).Create(spu); err != nil {
 			return err
 		}
@@ -92,11 +97,17 @@ func (s *ProductSpuService) CreateSpu(ctx context.Context, req *product2.Product
 		}
 		return nil
 	})
-	return spu.ID, err
+	if err != nil {
+		return 0, err
+	}
+	return spu.ID, nil
 }
 
 // UpdateSpu 更新 SPU
 func (s *ProductSpuService) UpdateSpu(ctx context.Context, req *product2.ProductSpuSaveReq) error {
+	if req == nil || req.SpecType == nil || req.SubCommissionType == nil {
+		return fmt.Errorf("商品规格参数不能为空")
+	}
 	// 校验存在
 	spu, err := s.validateSpuExists(ctx, req.ID)
 	if err != nil {
@@ -135,9 +146,14 @@ func (s *ProductSpuService) UpdateSpu(ctx context.Context, req *product2.Product
 	}
 	s.initSpuFromSkus(updateSpu, req.Skus)
 
-	return s.q.Transaction(func(tx *query.Query) error {
-		if _, err := tx.ProductSpu.WithContext(ctx).Where(tx.ProductSpu.ID.Eq(req.ID)).Updates(updateSpu); err != nil {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
+		u := tx.ProductSpu
+		info, err := u.WithContext(ctx).Where(u.ID.Eq(req.ID)).Select(u.Name, u.Keyword, u.Introduction, u.Description, u.CategoryID, u.BrandID, u.PicURL, u.SliderPicURLs, u.Sort, u.SpecType, u.DeliveryTypes, u.DeliveryTemplateID, u.GiveIntegral, u.SubCommissionType, u.VirtualSalesCount, u.Price, u.MarketPrice, u.CostPrice, u.Stock).Updates(updateSpu)
+		if err != nil {
 			return err
+		}
+		if info.RowsAffected != 1 {
+			return product.ErrSpuNotExists
 		}
 		return s.skuSvc.UpdateSkuList(ctx, req.ID, req.Skus)
 	})
@@ -155,9 +171,13 @@ func (s *ProductSpuService) DeleteSpu(ctx context.Context, id int64) error {
 		return product.ErrSpuNotRecycle // 使用商品模块错误码
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
-		if _, err := tx.ProductSpu.WithContext(ctx).Where(tx.ProductSpu.ID.Eq(id)).Delete(); err != nil {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
+		info, err := tx.ProductSpu.WithContext(ctx).Where(tx.ProductSpu.ID.Eq(id), tx.ProductSpu.Status.Eq(-1)).Delete()
+		if err != nil {
 			return err
+		}
+		if info.RowsAffected != 1 {
+			return product.ErrSpuNotRecycle
 		}
 		return s.skuSvc.DeleteSkuBySpuId(ctx, id)
 	})
@@ -169,7 +189,7 @@ func (s *ProductSpuService) UpdateSpuStatus(ctx context.Context, req *product2.P
 	if _, err := s.validateSpuExists(ctx, int64(req.ID)); err != nil {
 		return err
 	}
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		_, err := tx.ProductSpu.WithContext(ctx).Where(tx.ProductSpu.ID.Eq(int64(req.ID))).Update(tx.ProductSpu.Status, int32(*req.Status))
 		return err
 	})
@@ -377,6 +397,7 @@ func (s *ProductSpuService) GetSpuSimpleList(ctx context.Context) ([]*product2.P
 
 // UpdateSpuStock 更新 SPU 库存
 func (s *ProductSpuService) UpdateSpuStock(ctx context.Context, stockIncr map[int64]int) error {
+	q := repo.QueryFromContext(ctx, s.q)
 	for spuID, incr := range stockIncr {
 		if incr == 0 {
 			continue
@@ -384,8 +405,11 @@ func (s *ProductSpuService) UpdateSpuStock(ctx context.Context, stockIncr map[in
 		// Update stock
 		// Note: We don't strictly check SPU stock >= 0 here because it's an aggregate.
 		// SKU level check is the authority.
-		_, err := s.q.ProductSpu.WithContext(ctx).Where(s.q.ProductSpu.ID.Eq(spuID)).
-			Update(s.q.ProductSpu.Stock, s.q.ProductSpu.Stock.Add(int(incr)))
+		info, err := q.ProductSpu.WithContext(ctx).Where(q.ProductSpu.ID.Eq(spuID)).
+			Update(q.ProductSpu.Stock, q.ProductSpu.Stock.Add(int(incr)))
+		if err == nil && info.RowsAffected != 1 {
+			return product.ErrSpuNotExists
+		}
 		if err != nil {
 			return err
 		}
@@ -406,7 +430,8 @@ func (s *ProductSpuService) GetSpu(ctx context.Context, id int64) (*product.Prod
 // Internal Helpers
 
 func (s *ProductSpuService) validateSpuExists(ctx context.Context, id int64) (*product.ProductSpu, error) {
-	spu, err := s.q.ProductSpu.WithContext(ctx).Where(s.q.ProductSpu.ID.Eq(id)).First()
+	q := repo.QueryFromContext(ctx, s.q)
+	spu, err := q.ProductSpu.WithContext(ctx).Where(q.ProductSpu.ID.Eq(id)).First()
 	if err != nil {
 		return nil, product.ErrSpuNotExists // 使用商品模块错误码
 	}

@@ -758,12 +758,19 @@ func (s *TradeAfterSaleService) UpdateAfterSaleRefunded(ctx context.Context, aft
 	return s.q.Transaction(func(tx *query.Query) error {
 		// 1. 更新售后单状态为完成
 		newStatus := consts.AfterSaleStatusComplete
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(afterSaleId)).Updates(trade.AfterSale{
-			Status:      newStatus,
-			RefundTime:  time.Now(),
-			PayRefundID: payRefundId,
-		}); err != nil {
+		// 条件状态转换 + 影响行数校验：重复/乱序的退款回调不得重复更新订单项金额
+		result, err := tx.AfterSale.WithContext(ctx).
+			Where(tx.AfterSale.ID.Eq(afterSaleId), tx.AfterSale.Status.Eq(as.Status)).
+			Updates(trade.AfterSale{
+				Status:      newStatus,
+				RefundTime:  time.Now(),
+				PayRefundID: payRefundId,
+			})
+		if err != nil {
 			return err
+		}
+		if result.RowsAffected == 0 {
+			return nil // 已被并发回调处理，幂等返回
 		}
 
 		// 2. 记录售后日志
