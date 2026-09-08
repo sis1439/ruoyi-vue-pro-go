@@ -13,6 +13,16 @@ func RegisterAppRoutes(engine *gin.Engine,
 ) {
 	appGroup := engine.Group("/app-api")
 	{
+		// 文件写入沿用租户和登录身份校验。
+		appGroup.POST("/infra/file/upload", middleware.Auth(), handlers.Support.UploadFile)
+		appGroup.POST("/infra/file/create", middleware.Auth(), handlers.Support.CreateFile)
+		appGroup.GET("/infra/file/presigned-url", middleware.Auth(), handlers.Support.GetFilePresignedUrl)
+		appGroup.GET("/system/area/tree", handlers.Support.GetAreaTree)
+		appGroup.GET("/system/dict-data/type", handlers.Support.GetDictData)
+		appGroup.GET("/trade/delivery/express/list", handlers.Support.GetExpressList)
+		appGroup.GET("/trade/delivery/pick-up-store/list", handlers.Support.GetPickUpStoreList)
+		appGroup.GET("/trade/delivery/pick-up-store/get", handlers.Support.GetPickUpStore)
+		appGroup.GET("/trade/after-sale-log/list", middleware.Auth(), handlers.Support.GetAfterSaleLogs)
 		// ========== System ==========
 		systemGroup := appGroup.Group("/system")
 		{
@@ -180,6 +190,8 @@ func RegisterAppRoutes(engine *gin.Engine,
 				orderGroup.GET("/page", handlers.Mall.Trade.Order.GetOrderPage)
 				orderGroup.GET("/get-count", handlers.Mall.Trade.Order.GetOrderCount)
 				orderGroup.PUT("/receive", handlers.Mall.Trade.Order.ReceiveOrder)
+				orderGroup.DELETE("/delete", handlers.Mall.Trade.Order.DeleteOrder)
+				orderGroup.POST("/item/create-comment", handlers.Mall.Trade.Order.CreateOrderItemComment)
 				orderGroup.DELETE("/cancel", handlers.Mall.Trade.Order.CancelOrder)
 				orderGroup.GET("/get-express-track-list", handlers.Mall.Trade.Order.GetOrderExpressTrackList)
 			}
@@ -191,7 +203,7 @@ func RegisterAppRoutes(engine *gin.Engine,
 				afterSaleGroup.GET("/page", handlers.Mall.Trade.AfterSale.GetAfterSalePage)
 				afterSaleGroup.GET("/get", handlers.Mall.Trade.AfterSale.GetAfterSale)
 				afterSaleGroup.DELETE("/cancel", handlers.Mall.Trade.AfterSale.CancelAfterSale)
-				afterSaleGroup.POST("/delivery", handlers.Mall.Trade.AfterSale.DeliveryAfterSale)
+				afterSaleGroup.PUT("/delivery", handlers.Mall.Trade.AfterSale.DeliveryAfterSale)
 			}
 
 			// Brokerage User
@@ -200,6 +212,9 @@ func RegisterAppRoutes(engine *gin.Engine,
 				brokerageUserGroup.GET("/get", handlers.Mall.Trade.Brokerage.BrokerageUser.GetBrokerageUser)
 				brokerageUserGroup.GET("/get-summary", handlers.Mall.Trade.Brokerage.BrokerageUser.GetBrokerageUserSummary)
 				brokerageUserGroup.GET("/child-summary-page", handlers.Mall.Trade.Brokerage.BrokerageUser.GetBrokerageUserChildSummaryPage)
+				brokerageUserGroup.GET("/get-rank-by-price", handlers.Mall.Trade.Brokerage.BrokerageUser.GetRankByPrice)
+				brokerageUserGroup.GET("/rank-page-by-price", handlers.Mall.Trade.Brokerage.BrokerageUser.GetBrokerageUserRankPageByPrice)
+				brokerageUserGroup.GET("/rank-page-by-user-count", handlers.Mall.Trade.Brokerage.BrokerageUser.GetBrokerageUserRankPageByUserCount)
 				brokerageUserGroup.PUT("/bind", handlers.Mall.Trade.Brokerage.BrokerageUser.BindBrokerageUser)
 			}
 			brokerageRecordGroup := tradeGroup.Group("/brokerage-record")

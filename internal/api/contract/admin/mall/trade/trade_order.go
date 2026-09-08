@@ -97,7 +97,7 @@ type AppTradeOrderSettlementReq struct {
 	Items                 []AppTradeOrderSettlementItem `json:"items" form:"items" binding:"dive"`
 	CouponID              *int64                        `json:"couponId" form:"couponId"`
 	PointStatus           *bool                         `json:"pointStatus" form:"pointStatus" binding:"required"`
-	DeliveryType          int                           `json:"deliveryType" form:"deliveryType" binding:"required"` // 1: 快递, 2: 自提
+	DeliveryType          int                           `json:"deliveryType" form:"deliveryType" binding:"omitempty,oneof=1 2"` // 1: 快递, 2: 自提
 	AddressID             *int64                        `json:"addressId" form:"addressId"`
 	PickUpStoreID         *int64                        `json:"pickUpStoreId" form:"pickUpStoreId"`
 	ReceiverName          string                        `json:"receiverName" form:"receiverName"`
@@ -351,6 +351,12 @@ type AppTradeOrderItemResp struct {
 
 // AppTradeOrderDetailResp 订单详情响应
 type AppTradeOrderDetailResp struct {
+	PayExpireTime         *types.JsonDateTime     `json:"payExpireTime"`
+	PickUpVerifyCode      string                  `json:"pickUpVerifyCode"`
+	PickUpStoreID         int64                   `json:"pickUpStoreId"`
+	ReceiverAreaName      string                  `json:"receiverAreaName"`
+	PayChannelName        string                  `json:"payChannelName"`
+	LogisticsName         string                  `json:"logisticsName"`
 	ID                    int64                   `json:"id"`
 	No                    string                  `json:"no"`
 	Type                  int                     `json:"type"`

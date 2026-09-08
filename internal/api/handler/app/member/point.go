@@ -8,6 +8,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/pkg/errors"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/response"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -28,6 +29,7 @@ func (h *AppMemberPointRecordHandler) GetPointRecordPage(c *gin.Context) {
 		response.WriteBizError(c, errors.ErrParam)
 		return
 	}
+	r.CreateTime = types.QueryTimeRange(c.Request.URL.Query(), "createTime")
 	userId := context.GetLoginUserID(c)
 	pageResult, err := h.svc.GetAppPointRecordPage(c, userId, &r)
 	if err != nil {
@@ -41,7 +43,7 @@ func (h *AppMemberPointRecordHandler) GetPointRecordPage(c *gin.Context) {
 			Title:       item.Title,
 			Description: item.Description,
 			Point:       item.Point,
-			CreateTime:  item.CreateTime,
+			CreateTime:  types.ToJsonDateTime(item.CreateTime),
 		}
 	}), pageResult.Total))
 }

@@ -45,7 +45,7 @@ func (c *PointActivityPriceCalculator) Calculate(ctx context.Context, req *trade
 
 	// 积分商城订单只允许一个商品
 	if len(req.Items) != 1 {
-		err := pkgErrors.NewBizError(1004003001, "积分商城时，只允许选择一个商品")
+		err := pkgErrors.NewBizError(1011900001, "积分商城时，只允许选择一个商品")
 		c.LogError(ctx, req, err, "积分商城订单商品数量验证失败")
 		return err
 	}
@@ -62,7 +62,7 @@ func (c *PointActivityPriceCalculator) Calculate(ctx context.Context, req *trade
 	}
 
 	if spuID == 0 {
-		err := pkgErrors.NewBizError(1004003001, "未找到商品SPU信息")
+		err := pkgErrors.NewBizError(1011900001, "未找到商品SPU信息")
 		c.LogError(ctx, req, err, "积分商城商品SPU查找失败")
 		return err
 	}

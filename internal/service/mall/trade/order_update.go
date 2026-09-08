@@ -614,7 +614,7 @@ func (s *TradeOrderUpdateService) calculatePrice(ctx context.Context, userId int
 	// 3. 验证所有商品都是选中的
 	for _, item := range calculateReq.Items {
 		if !item.Selected {
-			return nil, pkgErrors.NewBizError(1004003001, fmt.Sprintf("商品(%d)未设置为选中", item.SkuID))
+			return nil, pkgErrors.NewBizError(1011900001, fmt.Sprintf("商品(%d)未设置为选中", item.SkuID))
 		}
 	}
 
@@ -628,15 +628,15 @@ func (s *TradeOrderUpdateService) calculatePrice(ctx context.Context, userId int
 // 如果支付订单创建失败，整个订单创建失败并回滚
 func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64, userIP string, terminal int, createReq *trade2.AppTradeOrderCreateReq) (*tradeModel.TradeOrder, error) {
 	if createReq == nil || len(createReq.Items) == 0 {
-		return nil, pkgErrors.NewBizError(1004003001, "订单商品不能为空")
+		return nil, pkgErrors.NewBizError(1011900001, "订单商品不能为空")
 	}
 	for _, item := range createReq.Items {
 		if item.Count <= 0 {
-			return nil, pkgErrors.NewBizError(1004003001, "商品数量必须大于零")
+			return nil, pkgErrors.NewBizError(1011900001, "商品数量必须大于零")
 		}
 	}
 	if (createReq.SeckillActivityID != nil && *createReq.SeckillActivityID != 0) || (createReq.CombinationActivityID != nil && *createReq.CombinationActivityID != 0) || (createReq.CombinationHeadID != nil && *createReq.CombinationHeadID != 0) || (createReq.BargainRecordID != nil && *createReq.BargainRecordID != 0) || (createReq.PointActivityID != nil && *createReq.PointActivityID != 0) {
-		return nil, pkgErrors.NewBizError(1004003001, "暂不支持此营销活动订单")
+		return nil, pkgErrors.NewBizError(1011900001, "暂不支持此营销活动订单")
 	}
 
 	s.logger.Info("开始创建订单",
@@ -659,7 +659,7 @@ func (s *TradeOrderUpdateService) CreateOrder(ctx context.Context, userId int64,
 	}
 
 	if priceResp.Price.PayPrice <= 0 {
-		return nil, pkgErrors.NewBizError(1004003001, "暂不支持零元订单")
+		return nil, pkgErrors.NewBizError(1011900001, "暂不支持零元订单")
 	}
 
 	// 1.2 构建订单
@@ -1363,7 +1363,7 @@ func (s *TradeOrderUpdateService) parseTimeString(timeStr string) *time.Time {
 // CancelOrder 取消订单
 // 对应 Java: TradeOrderUpdateServiceImpl#cancelOrderByMember
 func (s *TradeOrderUpdateService) CancelOrder(ctx context.Context, userId int64, orderId int64) error {
-	return s.cancelUnpaidOrder(ctx, userId, orderId, consts.OrderCancelTypeMember)
+	return s.cancelUnpaidOrder(ctx, userId, orderId, consts.TradeOrderCancelTypeMemberCancel)
 }
 
 func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId, orderId int64, cancelType int) error {
@@ -1377,12 +1377,12 @@ func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId,
 		Where(s.q.TradeOrder.ID.Eq(orderId), s.q.TradeOrder.UserID.Eq(userId)).
 		First()
 	if err != nil {
-		return pkgErrors.NewBizError(1004001001, "订单不存在")
+		return pkgErrors.NewBizError(1011000011, "订单不存在")
 	}
 
 	// 2. 校验订单状态必须是待支付
 	if order.Status != consts.TradeOrderStatusUnpaid {
-		return pkgErrors.NewBizError(1004001002, "订单状态不是待支付，不允许取消")
+		return pkgErrors.NewBizError(1011902002, "订单状态不是待支付，不允许取消")
 	}
 
 	// 3. 校验支付延迟（防止支付回调延迟导致已支付订单被取消）
@@ -1394,7 +1394,7 @@ func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId,
 				zap.Int64("orderId", orderId),
 				zap.Int64("payOrderId", *order.PayOrderID),
 			)
-			return pkgErrors.NewBizError(1004001002, "订单已支付，不允许取消")
+			return pkgErrors.NewBizError(1011902002, "订单已支付，不允许取消")
 		}
 	}
 
@@ -1415,7 +1415,7 @@ func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId,
 		// 未更新到行说明订单状态已被并发的支付回调改变，
 		// 此时绝不能继续执行库存/优惠券恢复，否则会出现"已付款却已释放库存"
 		if info.RowsAffected != 1 {
-			return pkgErrors.NewBizError(1004001002, "订单状态已变更")
+			return pkgErrors.NewBizError(1011902002, "订单状态已变更")
 		}
 
 		// 4.2 执行后置处理器（对应 Java: tradeOrderHandlers.forEach(handler -> handler.afterCancelOrder)）
@@ -1466,18 +1466,18 @@ func (s *TradeOrderUpdateService) CancelPaidOrder(ctx context.Context, userID in
 		Where(s.q.TradeOrder.ID.Eq(orderID), s.q.TradeOrder.UserID.Eq(userID)).
 		First()
 	if err != nil {
-		return pkgErrors.NewBizError(1004001001, "订单不存在")
+		return pkgErrors.NewBizError(1011000011, "订单不存在")
 	}
 
 	// 2. 校验状态：已支付但未收货（或根据业务需要更细粒度校验）
 	if !order.PayStatus {
-		return pkgErrors.NewBizError(1004001002, "订单未支付，不能使用此接口取消")
+		return pkgErrors.NewBizError(1011902002, "订单未支付，不能使用此接口取消")
 	}
 	if order.Status == consts.TradeOrderStatusCanceled {
 		return nil // 已经取消了
 	}
 	if order.Status == consts.TradeOrderStatusCompleted {
-		return pkgErrors.NewBizError(1004001002, "订单已完成，不允许取消")
+		return pkgErrors.NewBizError(1011902002, "订单已完成，不允许取消")
 	}
 
 	// 3. 执行取消并退款
@@ -1583,13 +1583,13 @@ func (s *TradeOrderUpdateService) DeleteOrder(ctx context.Context, userId int64,
 		Where(s.q.TradeOrder.ID.Eq(orderId), s.q.TradeOrder.UserID.Eq(userId)).
 		First()
 	if err != nil {
-		return pkgErrors.NewBizError(1004001001, "订单不存在")
+		return pkgErrors.NewBizError(1011000011, "订单不存在")
 	}
 
 	// 2. 校验订单状态必须是已取消
 	// 对应 Java: if (ObjectUtil.notEqual(order.getStatus(), TradeOrderStatusEnum.CANCELED.getStatus()))
 	if order.Status != consts.TradeOrderStatusCanceled {
-		return pkgErrors.NewBizError(1004001003, "订单状态不是已取消，不允许删除")
+		return pkgErrors.NewBizError(1011902003, "订单状态不是已取消，不允许删除")
 	}
 
 	// 3. 删除订单
@@ -1630,13 +1630,13 @@ func (s *TradeOrderUpdateService) ReceiveOrder(ctx context.Context, userId int64
 		Where(s.q.TradeOrder.ID.Eq(orderId), s.q.TradeOrder.UserID.Eq(userId)).
 		First()
 	if err != nil {
-		return pkgErrors.NewBizError(1004001001, "订单不存在")
+		return pkgErrors.NewBizError(1011000011, "订单不存在")
 	}
 
 	// 2. 校验订单状态必须是已发货
 	// 对应 Java: if (!TradeOrderStatusEnum.isDelivered(order.getStatus()))
 	if order.Status != consts.TradeOrderStatusDelivered {
-		return pkgErrors.NewBizError(1004001004, "订单状态不是已发货，不允许确认收货")
+		return pkgErrors.NewBizError(1011902004, "订单状态不是已发货，不允许确认收货")
 	}
 
 	// 3. 更新订单状态为已完成（使用事务）
@@ -1697,7 +1697,7 @@ func (s *TradeOrderUpdateService) CreateOrderItemCommentByMember(ctx context.Con
 		Where(s.q.TradeOrderItem.ID.Eq(createReq.OrderItemID)).
 		First()
 	if err != nil {
-		return 0, pkgErrors.NewBizError(1004002001, "订单项不存在")
+		return 0, pkgErrors.NewBizError(1011903001, "订单项不存在")
 	}
 
 	// 2. 查询订单并验证权限
@@ -1705,12 +1705,12 @@ func (s *TradeOrderUpdateService) CreateOrderItemCommentByMember(ctx context.Con
 		Where(s.q.TradeOrder.ID.Eq(orderItem.OrderID), s.q.TradeOrder.UserID.Eq(userId)).
 		First()
 	if err != nil {
-		return 0, pkgErrors.NewBizError(1004001001, "订单不存在或无权限")
+		return 0, pkgErrors.NewBizError(1011902001, "订单不存在或无权限")
 	}
 
 	// 3. 验证订单状态（必须是已完成）
 	if order.Status != consts.TradeOrderStatusCompleted {
-		return 0, pkgErrors.NewBizError(1004002002, "订单未完成，不能评价")
+		return 0, pkgErrors.NewBizError(1011903002, "订单未完成，不能评价")
 	}
 
 	// 4. 创建评价记录
@@ -1748,15 +1748,19 @@ func (s *TradeOrderUpdateService) UpdateOrderItemWhenAfterSaleCreate(ctx context
 		zap.Int64("afterSaleId", afterSaleId),
 	)
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新订单项售后状态
-		if _, err := tx.TradeOrderItem.WithContext(ctx).
-			Where(tx.TradeOrderItem.ID.Eq(orderItemId)).
+		result, err := tx.TradeOrderItem.WithContext(ctx).
+			Where(tx.TradeOrderItem.ID.Eq(orderItemId), tx.TradeOrderItem.AfterSaleStatus.Eq(tradeModel.TradeOrderItemAfterSaleStatusNone)).
 			Updates(map[string]interface{}{
 				"after_sale_status": tradeModel.TradeOrderItemAfterSaleStatusApply,
 				"after_sale_id":     afterSaleId,
-			}); err != nil {
+			})
+		if err != nil {
 			return err
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("订单项已申请售后")
 		}
 
 		// 2. 更新订单售后状态为【申请退款】
@@ -1779,7 +1783,7 @@ func (s *TradeOrderUpdateService) UpdateOrderItemWhenAfterSaleSuccess(ctx contex
 		zap.Int("refundPrice", refundPrice),
 	)
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新订单项售后状态
 		_, err := tx.TradeOrderItem.WithContext(ctx).
 			Where(tx.TradeOrderItem.ID.Eq(orderItemId)).
@@ -1821,7 +1825,7 @@ func (s *TradeOrderUpdateService) UpdateOrderItemWhenAfterSaleSuccess(ctx contex
 
 		if allSuccess {
 			updates["status"] = consts.TradeOrderStatusCanceled
-			updates["cancel_type"] = consts.OrderCancelTypeAfterSaleClose
+			updates["cancel_type"] = consts.TradeOrderCancelTypeAfterSaleClose
 			now := time.Now()
 			updates["cancel_time"] = &now
 		}
@@ -1839,7 +1843,7 @@ func (s *TradeOrderUpdateService) UpdateOrderItemWhenAfterSaleCancel(ctx context
 		zap.Int64("orderItemId", orderItemId),
 	)
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新订单项售后状态为无
 		if _, err := tx.TradeOrderItem.WithContext(ctx).
 			Where(tx.TradeOrderItem.ID.Eq(orderItemId)).
@@ -1914,7 +1918,7 @@ func (s *TradeOrderUpdateService) CancelOrderBySystem(ctx context.Context) (int6
 
 // cancelOrderBySystemSingle 单个订单系统取消逻辑
 func (s *TradeOrderUpdateService) cancelOrderBySystemSingle(ctx context.Context, order *tradeModel.TradeOrder) error {
-	return s.cancelUnpaidOrder(ctx, order.UserID, order.ID, consts.OrderCancelTypeTimeout)
+	return s.cancelUnpaidOrder(ctx, order.UserID, order.ID, consts.TradeOrderCancelTypePayTimeout)
 }
 
 // ReceiveOrderBySystem 系统自动确认收货
@@ -2028,7 +2032,7 @@ func (s *TradeOrderUpdateService) UpdateOrderGiveCouponIds(ctx context.Context, 
 		Where(s.q.TradeOrder.ID.Eq(orderId), s.q.TradeOrder.UserID.Eq(userId)).
 		First()
 	if err != nil {
-		return pkgErrors.NewBizError(1004001001, "订单不存在")
+		return pkgErrors.NewBizError(1011000011, "订单不存在")
 	}
 
 	if len(couponIds) == 0 {
@@ -2097,7 +2101,7 @@ func (s *TradeOrderUpdateService) SyncOrderPayStatus(ctx context.Context, userID
 		Where(s.q.TradeOrder.ID.Eq(orderID), s.q.TradeOrder.UserID.Eq(userID)).
 		First()
 	if err != nil {
-		return pkgErrors.NewBizError(1004001001, "订单不存在")
+		return pkgErrors.NewBizError(1011000011, "订单不存在")
 	}
 	if order.Status != consts.TradeOrderStatusUnpaid || order.PayOrderID == nil || *order.PayOrderID == 0 {
 		return nil // 无需同步

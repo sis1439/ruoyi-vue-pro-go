@@ -42,7 +42,7 @@ func (c *CouponPriceCalculator) Calculate(ctx context.Context, req *tradeSvc.Tra
 	// 只有【普通】订单，才允许使用优惠劵 (对齐 Java TradeCouponPriceCalculator#calculate)
 	if resp.Type != consts.TradeOrderTypeNormal {
 		if req.CouponID != nil && *req.CouponID > 0 {
-			return pkgErrors.NewBizError(1004001004, "优惠券仅限普通订单使用")
+			return pkgErrors.NewBizError(1011902004, "优惠券仅限普通订单使用")
 		}
 		return nil
 	}
@@ -80,7 +80,7 @@ func (c *CouponPriceCalculator) Calculate(ctx context.Context, req *tradeSvc.Tra
 
 	if !foundBO || !found {
 		c.LogError(ctx, req, nil, "优惠券不存在")
-		return pkgErrors.NewBizError(1004001001, "优惠券不存在")
+		return pkgErrors.NewBizError(1011902001, "优惠券不存在")
 	}
 	if !couponBO.Match {
 		reason := ""
@@ -88,7 +88,7 @@ func (c *CouponPriceCalculator) Calculate(ctx context.Context, req *tradeSvc.Tra
 			reason = *couponBO.MismatchReason
 		}
 		c.LogError(ctx, req, nil, reason)
-		return pkgErrors.NewBizError(1004001001, reason)
+		return pkgErrors.NewBizError(1011902001, reason)
 	}
 
 	// 3.1 计算可以优惠的金额
@@ -153,7 +153,7 @@ func (c *CouponPriceCalculator) calculateCoupons(coupons []*promotionModel.Promo
 			DiscountType:       coupon.DiscountType,
 			DiscountPercent:    coupon.DiscountPercent,
 			DiscountPrice:      coupon.DiscountPrice,
-			DiscountLimitPrice: coupon.DiscountLimitPrice,
+			DiscountLimitPrice: lo.FromPtr(coupon.DiscountLimitPrice),
 			Match:              true,
 			MismatchReason:     nil, // 默认为nil
 		}
@@ -203,8 +203,8 @@ func (c *CouponPriceCalculator) getCouponPrice(coupon *promotionModel.PromotionC
 		return coupon.DiscountPrice
 	case consts.DiscountTypePercent: // 折扣
 		amount := totalPayPrice - (totalPayPrice * coupon.DiscountPercent / 100)
-		if coupon.DiscountLimitPrice > 0 {
-			return lo.Min([]int{amount, coupon.DiscountLimitPrice})
+		if coupon.DiscountLimitPrice != nil {
+			return lo.Min([]int{amount, *coupon.DiscountLimitPrice})
 		}
 		return amount
 	}

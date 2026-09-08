@@ -2,6 +2,7 @@ package promotion
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	promotion2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/promotion"
@@ -258,8 +259,8 @@ func (s *SeckillActivityService) GetSeckillActivityDetail(ctx context.Context, i
 		Name:             act.Name,
 		Status:           act.Status,
 		SpuID:            act.SpuID,
-		StartTime:        startTime,
-		EndTime:          endTime,
+		StartTime:        types.ToJsonDateTimePtr(startTime),
+		EndTime:          types.ToJsonDateTimePtr(endTime),
 		SingleLimitCount: act.SingleLimitCount,
 		TotalLimitCount:  act.TotalLimitCount,
 		Stock:            act.Stock,

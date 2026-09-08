@@ -1,6 +1,7 @@
 package member
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
@@ -20,11 +21,11 @@ type MemberPointRecordResp struct {
 }
 
 type AppMemberPointRecordResp struct {
-	ID          int64     `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Point       int       `json:"point"`
-	CreateTime  time.Time `json:"createTime"`
+	ID          int64              `json:"id"`
+	Title       string             `json:"title"`
+	Description string             `json:"description"`
+	Point       int                `json:"point"`
+	CreateTime  types.JsonDateTime `json:"createTime"`
 }
 
 type MemberPointRecordPageReq struct {
@@ -37,6 +38,7 @@ type MemberPointRecordPageReq struct {
 }
 
 type AppMemberPointRecordPageReq struct {
+	CreateTime []string `form:"createTime[]"`
 	pagination.PageParam
 	AddStatus *bool `form:"addStatus"` // true: 增加, false: 减少
 }

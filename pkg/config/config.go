@@ -123,7 +123,8 @@ type RedisConfig struct {
 }
 
 type TradeConfig struct {
-	Express ExpressConfig `mapstructure:"express"`
+	TencentLbsKey string        `mapstructure:"tencent_lbs_key"`
+	Express       ExpressConfig `mapstructure:"express"`
 }
 
 type ExpressConfig struct {

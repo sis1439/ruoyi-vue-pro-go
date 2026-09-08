@@ -47,24 +47,12 @@ type TradeConfigResp struct {
 
 // AppTradeConfigResp App 交易配置 Response (对齐 Java: AppTradeConfigRespVO)
 type AppTradeConfigResp struct {
-	AfterSaleDeadlineDays       int      `json:"afterSaleDeadlineDays"`  // 售后期限(天)
-	PayTimeoutMinutes           int      `json:"payTimeoutMinutes"`      // 支付超时(分钟)
-	AutoReceiveDays             int      `json:"autoReceiveDays"`        // 自动收货(天)
-	AutoCommentDays             int      `json:"autoCommentDays"`        // 自动好评(天)
-	AfterSaleRefundReasons      []string `json:"afterSaleRefundReasons"` // 售后的退款理由
-	AfterSaleReturnReasons      []string `json:"afterSaleReturnReasons"` // 售后的退货理由
-	DeliveryExpressFreeEnabled  bool     `json:"deliveryExpressFreeEnabled"`
-	DeliveryExpressFreePrice    int      `json:"deliveryExpressFreePrice"`
-	DeliveryPickUpEnabled       bool     `json:"deliveryPickUpEnabled"`
-	BrokerageWithdrawMinPrice   int      `json:"brokerageWithdrawMinPrice"`
-	BrokerageWithdrawFeePercent int      `json:"brokerageWithdrawFeePercent"`
-	BrokerageEnabled            bool     `json:"brokerageEnabled"`
-	BrokerageFrozenDays         int      `json:"brokerageFrozenDays"`
-	BrokerageFirstPercent       int      `json:"brokerageFirstPercent"`
-	BrokerageSecondPercent      int      `json:"brokerageSecondPercent"`
-	BrokerageEnabledCondition   int      `json:"brokerageEnabledCondition"`
-	BrokerageBindMode           int      `json:"brokerageBindMode"`
-	BrokeragePosterUrls         []string `json:"brokeragePosterUrls"`
-	BrokerageWithdrawTypes      []int    `json:"brokerageWithdrawTypes"`
-	TencentLbsKey               string   `json:"tencentLbsKey"`
+	AfterSaleRefundReasons    []string `json:"afterSaleRefundReasons"` // 售后的退款理由
+	AfterSaleReturnReasons    []string `json:"afterSaleReturnReasons"` // 售后的退货理由
+	DeliveryPickUpEnabled     bool     `json:"deliveryPickUpEnabled"`
+	BrokerageWithdrawMinPrice int      `json:"brokerageWithdrawMinPrice"`
+	BrokerageFrozenDays       int      `json:"brokerageFrozenDays"`
+	BrokeragePosterUrls       []string `json:"brokeragePosterUrls"`
+	BrokerageWithdrawTypes    []int    `json:"brokerageWithdrawTypes"`
+	TencentLbsKey             string   `json:"tencentLbsKey"`
 }

@@ -23,7 +23,7 @@ type PromotionCoupon struct {
 	DiscountType       int                      `gorm:"column:discount_type;type:int;not null;comment:优惠类型"`
 	DiscountPrice      int                      `gorm:"column:discount_price;type:int;comment:优惠金额"`
 	DiscountPercent    int                      `gorm:"column:discount_percent;type:int;comment:折扣百分比"`
-	DiscountLimitPrice int                      `gorm:"column:discount_limit_price;type:int;comment:折扣上限"`
+	DiscountLimitPrice *int                     `gorm:"column:discount_limit_price;type:int;comment:折扣上限"`
 	UseOrderID         int64                    `gorm:"column:use_order_id;type:bigint;comment:使用订单编号"`
 	UseTime            *time.Time               `gorm:"column:use_time;comment:使用时间"`
 	model.TenantBaseDO

@@ -2,6 +2,7 @@ package promotion
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"log"
 	"time"
 
@@ -130,7 +131,7 @@ func (s *kefuService) CreateMessage(ctx context.Context, r promotion2.KefuMessag
 		ContentType:    msg.ContentType,
 		Content:        msg.Content,
 		ReadStatus:     false,
-		CreateTime:     msg.CreateTime,
+		CreateTime:     types.ToJsonDateTime(msg.CreateTime),
 	}
 	// 获取发送者头像
 	if senderType == 1 { // Member
@@ -319,7 +320,7 @@ func (s *kefuService) GetMessageList(ctx context.Context, r promotion2.KefuMessa
 			ContentType:    v.ContentType,
 			Content:        v.Content,
 			ReadStatus:     bool(v.ReadStatus),
-			CreateTime:     v.CreateTime,
+			CreateTime:     types.ToJsonDateTime(v.CreateTime),
 		}
 		// 填充 Admin 发送者头像 (对齐 Java Controller 逻辑)
 		if v.SenderType == 2 { // Admin
@@ -352,7 +353,7 @@ func (s *kefuService) GetMessagePage(ctx context.Context, r promotion2.KefuMessa
 			ContentType:    v.ContentType,
 			Content:        v.Content,
 			ReadStatus:     bool(v.ReadStatus),
-			CreateTime:     v.CreateTime,
+			CreateTime:     types.ToJsonDateTime(v.CreateTime),
 		}
 	}
 	return &pagination.PageResult[promotion2.KefuMessageResp]{List: resList, Total: count}, nil

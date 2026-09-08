@@ -1,6 +1,7 @@
 package product
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
@@ -93,13 +94,28 @@ type ProductCommentResp struct {
 
 // AppProductCommentResp 商品评价响应 (App)
 type AppProductCommentResp struct {
-	ID            int64                    `json:"id"`
-	UserNickname  string                   `json:"userNickname"`
-	UserAvatar    string                   `json:"userAvatar"`
-	Scores        int                      `json:"scores"`
-	Content       string                   `json:"content"`
-	PicURLs       []string                 `json:"picUrls"`
-	ReplyContent  string                   `json:"replyContent"`
-	SkuProperties []ProductSkuPropertyResp `json:"skuProperties"`
-	CreateTime    time.Time                `json:"createTime"`
+	UserID            int64                    `json:"userId"`
+	Anonymous         bool                     `json:"anonymous"`
+	OrderID           int64                    `json:"orderId"`
+	OrderItemID       int64                    `json:"orderItemId"`
+	SkuID             int64                    `json:"skuId"`
+	SpuID             int64                    `json:"spuId"`
+	DescriptionScores int                      `json:"descriptionScores"`
+	BenefitScores     int                      `json:"benefitScores"`
+	ReplyStatus       bool                     `json:"replyStatus"`
+	ReplyUserID       int64                    `json:"replyUserId"`
+	AdditionalContent *string                  `json:"additionalContent"`
+	AdditionalPicUrls []string                 `json:"additionalPicUrls"`
+	AdditionalTime    *types.JsonDateTime      `json:"additionalTime"`
+	SpuName           string                   `json:"spuName"`
+	ReplyTime         *types.JsonDateTime      `json:"replyTime"`
+	ID                int64                    `json:"id"`
+	UserNickname      string                   `json:"userNickname"`
+	UserAvatar        string                   `json:"userAvatar"`
+	Scores            int                      `json:"scores"`
+	Content           string                   `json:"content"`
+	PicURLs           []string                 `json:"picUrls"`
+	ReplyContent      string                   `json:"replyContent"`
+	SkuProperties     []ProductSkuPropertyResp `json:"properties"`
+	CreateTime        types.JsonDateTime       `json:"createTime"`
 }

@@ -2,6 +2,9 @@ package trade
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
+	"github.com/wxlbd/ruoyi-mall-go/internal/pkg/area"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	trade2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
@@ -296,4 +299,28 @@ func (s *TradeOrderQueryService) parseTime(tStr string) time.Time {
 // GetOrderLogListByOrderId 获得交易订单日志列表
 func (s *TradeOrderQueryService) GetOrderLogListByOrderId(ctx context.Context, orderId int64) ([]*trade.TradeOrderLog, error) {
 	return s.q.TradeOrderLog.WithContext(ctx).Where(s.q.TradeOrderLog.OrderID.Eq(orderId)).Order(s.q.TradeOrderLog.CreateTime.Desc()).Find()
+}
+
+func (s *TradeOrderQueryService) FillAppOrderDetail(ctx context.Context, order *trade.TradeOrder, res *trade2.AppTradeOrderDetailResp) error {
+	res.PickUpStoreID = order.PickUpStoreID
+	res.PickUpVerifyCode = order.PickUpVerifyCode
+	res.ReceiverAreaName = area.Format(order.ReceiverAreaID)
+	res.PayChannelName = consts.PayChannelName(order.PayChannelCode)
+	if order.PayOrderID != nil {
+		payment, err := s.q.PayOrder.WithContext(ctx).Where(s.q.PayOrder.ID.Eq(*order.PayOrderID)).First()
+		if err != nil {
+			return err
+		}
+		res.PayExpireTime = types.ToJsonDateTimePtr(&payment.ExpireTime)
+	}
+	if order.LogisticsID > 0 {
+		express, err := s.deliveryExpressSvc.GetDeliveryExpress(ctx, order.LogisticsID)
+		if err != nil {
+			return err
+		}
+		if express != nil {
+			res.LogisticsName = express.Name
+		}
+	}
+	return nil
 }

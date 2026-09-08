@@ -46,7 +46,7 @@ func (c *CombinationActivityPriceCalculator) Calculate(ctx context.Context, req 
 
 	// 拼团订单只允许一个商品
 	if len(req.Items) != 1 {
-		err := pkgErrors.NewBizError(1004003001, "拼团时，只允许选择一个商品")
+		err := pkgErrors.NewBizError(1011900001, "拼团时，只允许选择一个商品")
 		c.LogError(ctx, req, err, "拼团订单商品数量验证失败")
 		return err
 	}

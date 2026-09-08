@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"math"
 	"strings"
 
@@ -74,6 +75,13 @@ func (s *MemberPointRecordService) GetPointRecordPage(ctx context.Context, r *me
 // 对应 Java: MemberPointRecordServiceImpl.getPointRecordPage(Long userId, AppMemberPointRecordPageReqVO)
 func (s *MemberPointRecordService) GetAppPointRecordPage(ctx context.Context, userId int64, r *member2.AppMemberPointRecordPageReq) (*pagination.PageResult[*member.MemberPointRecord], error) {
 	q := s.q.MemberPointRecord.WithContext(ctx).Where(s.q.MemberPointRecord.UserID.Eq(userId))
+	if len(r.CreateTime) > 0 {
+		start, end, err := types.ParseTimeRange(r.CreateTime)
+		if err != nil {
+			return nil, err
+		}
+		q = q.Where(s.q.MemberPointRecord.CreateTime.Between(start, end))
+	}
 
 	// 增减状态过滤
 	if r.AddStatus != nil {
@@ -88,7 +96,7 @@ func (s *MemberPointRecordService) GetAppPointRecordPage(ctx context.Context, us
 
 	q = q.Order(s.q.MemberPointRecord.ID.Desc())
 
-	list, count, err := q.FindByPage(r.PageNo, r.PageSize)
+	list, count, err := q.FindByPage(r.GetOffset(), r.GetLimit())
 	if err != nil {
 		return nil, err
 	}

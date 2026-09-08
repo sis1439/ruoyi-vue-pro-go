@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/trade"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	tradeRepo "github.com/wxlbd/ruoyi-mall-go/internal/repo/trade"
 	"github.com/wxlbd/ruoyi-mall-go/internal/service/mall/promotion"
@@ -76,7 +78,7 @@ func (s *TradeAfterSaleService) CreateAfterSale(ctx context.Context, userId int6
 
 	// 2. 执行创建逻辑 (事务)
 	var afterSaleId int64
-	err = s.q.Transaction(func(tx *query.Query) error {
+	err = repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 2.1 存储售后订单
 		afterSale, err := s.createAfterSaleDOWithQuery(ctx, tx, r, item)
 		if err != nil {
@@ -125,7 +127,7 @@ func (s *TradeAfterSaleService) validateOrderItemApplicable(ctx context.Context,
 	}
 
 	// 申请的退款金额，不能超过商品的价格
-	if r.RefundPrice > item.PayPrice {
+	if r.RefundPrice == nil || *r.RefundPrice < 0 || *r.RefundPrice > item.PayPrice {
 		return nil, fmt.Errorf("退款金额不能超过商品支付价格")
 	}
 
@@ -191,8 +193,8 @@ func (s *TradeAfterSaleService) createAfterSaleDOWithQuery(ctx context.Context, 
 		SkuID:            item.SkuID,
 		Properties:       string(props),
 		PicURL:           item.PicURL,
-		Count:            r.Count,
-		RefundPrice:      r.RefundPrice,
+		Count:            item.Count,
+		RefundPrice:      *r.RefundPrice,
 	}
 
 	// 标记是售中还是售后
@@ -226,8 +228,8 @@ func (s *TradeAfterSaleService) convertToAppAfterSaleResp(as *trade.AfterSale) *
 		Type:             as.Type,
 		ApplyReason:      as.ApplyReason,
 		ApplyDescription: as.ApplyDescription,
-		CreateTime:       as.CreateTime,
-		UpdateTime:       as.UpdateTime,
+		CreateTime:       types.ToJsonDateTime(as.CreateTime),
+		UpdateTime:       types.ToJsonDateTime(as.UpdateTime),
 		OrderID:          as.OrderID,
 		OrderNo:          as.OrderNo,
 		OrderItemID:      as.OrderItemID,
@@ -253,16 +255,16 @@ func (s *TradeAfterSaleService) convertToAppAfterSaleResp(as *trade.AfterSale) *
 
 	// 时间指针处理
 	if !as.AuditTime.IsZero() {
-		res.AuditTime = &as.AuditTime
+		res.AuditTime = types.ToJsonDateTimePtr(&as.AuditTime)
 	}
 	if !as.RefundTime.IsZero() {
-		res.RefundTime = &as.RefundTime
+		res.RefundTime = types.ToJsonDateTimePtr(&as.RefundTime)
 	}
 	if !as.DeliveryTime.IsZero() {
-		res.DeliveryTime = &as.DeliveryTime
+		res.DeliveryTime = types.ToJsonDateTimePtr(&as.DeliveryTime)
 	}
 	if !as.ReceiveTime.IsZero() {
-		res.ReceiveTime = &as.ReceiveTime
+		res.ReceiveTime = types.ToJsonDateTimePtr(&as.ReceiveTime)
 	}
 
 	return res
@@ -271,8 +273,8 @@ func (s *TradeAfterSaleService) convertToAppAfterSaleResp(as *trade.AfterSale) *
 // GetUserAfterSalePage 获得售后分页 (App)
 func (s *TradeAfterSaleService) GetUserAfterSalePage(ctx context.Context, userId int64, r *trade2.AppAfterSalePageReq) (*pagination.PageResult[*trade2.AppAfterSaleResp], error) {
 	q := s.q.AfterSale.WithContext(ctx).Where(s.q.AfterSale.UserID.Eq(userId))
-	if r.Status != nil {
-		q = q.Where(s.q.AfterSale.Status.Eq(*r.Status))
+	if len(r.Statuses) > 0 {
+		q = q.Where(s.q.AfterSale.Status.In(r.Statuses...))
 	}
 
 	list, total, err := q.Order(s.q.AfterSale.ID.Desc()).FindByPage(r.GetOffset(), r.PageSize)
@@ -357,13 +359,13 @@ func (s *TradeAfterSaleService) CancelAfterSale(ctx context.Context, userId int6
 	if err != nil {
 		return err
 	}
-	if as.Status != consts.AfterSaleStatusApply {
+	if as.Status != consts.AfterSaleStatusApply && as.Status != consts.AfterSaleStatusSellerAgree && as.Status != consts.AfterSaleStatusBuyerDelivery {
 		return fmt.Errorf("状态不允许取消")
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(id)).Update(tx.AfterSale.Status, consts.AfterSaleStatusBuyerCancel); err != nil {
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{"status": consts.AfterSaleStatusBuyerCancel}); err != nil {
 			return err
 		}
 
@@ -398,17 +400,17 @@ func (s *TradeAfterSaleService) AgreeAfterSale(ctx context.Context, adminUserId 
 		return fmt.Errorf("售后单状态不是申请中，无法同意")
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态
 		newStatus := consts.AfterSaleStatusSellerAgree
 		if as.Way == consts.AfterSaleWayRefund {
 			newStatus = consts.AfterSaleStatusWaitRefund
 		}
 
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(id)).Updates(trade.AfterSale{
-			Status:      newStatus,
-			AuditTime:   time.Now(),
-			AuditUserID: adminUserId,
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{
+			"status":        newStatus,
+			"audit_time":    time.Now(),
+			"audit_user_id": adminUserId,
 		}); err != nil {
 			return err
 		}
@@ -426,10 +428,6 @@ func (s *TradeAfterSaleService) AgreeAfterSale(ctx context.Context, adminUserId 
 			return err
 		}
 
-		// 3. 更新订单项状态
-		if _, err := tx.TradeOrderItem.WithContext(ctx).Where(tx.TradeOrderItem.ID.Eq(as.OrderItemID)).Update(tx.TradeOrderItem.AfterSaleStatus, int32(newStatus)); err != nil {
-			return err
-		}
 		return nil
 	})
 }
@@ -444,14 +442,14 @@ func (s *TradeAfterSaleService) DisagreeAfterSale(ctx context.Context, adminUser
 		return fmt.Errorf("售后单状态不是申请中，无法拒绝")
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态
 		newStatus := consts.AfterSaleStatusSellerDisagree
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(req.ID)).Updates(trade.AfterSale{
-			Status:      newStatus,
-			AuditReason: req.AuditReason,
-			AuditTime:   time.Now(),
-			AuditUserID: adminUserId,
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{
+			"status":        newStatus,
+			"audit_reason":  req.AuditReason,
+			"audit_time":    time.Now(),
+			"audit_user_id": adminUserId,
 		}); err != nil {
 			return err
 		}
@@ -487,6 +485,10 @@ func (s *TradeAfterSaleService) RefundAfterSale(ctx context.Context, adminUserId
 		return fmt.Errorf("售后单状态不是待退款，无法退款")
 	}
 
+	if as.RefundPrice == 0 {
+		return s.UpdateAfterSaleRefunded(ctx, id, 0)
+	}
+
 	// 1. 获取交易配置以获取支付 AppKey
 	config, err := s.configSvc.GetTradeConfig(ctx)
 	if err != nil {
@@ -511,9 +513,9 @@ func (s *TradeAfterSaleService) RefundAfterSale(ctx context.Context, adminUserId
 		return fmt.Errorf("发起退款申请失败: %w", err)
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 更新售后单的支付退款 ID
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(id)).Update(tx.AfterSale.PayRefundID, payRefundId); err != nil {
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{"pay_refund_id": payRefundId}); err != nil {
 			return err
 		}
 
@@ -668,12 +670,12 @@ func (s *TradeAfterSaleService) ReceiveAfterSale(ctx context.Context, adminUserI
 		return fmt.Errorf("售后状态不允许确认收货")
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态为待退款
 		newStatus := consts.AfterSaleStatusWaitRefund
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(id)).Updates(trade.AfterSale{
-			Status:      newStatus,
-			ReceiveTime: time.Now(),
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{
+			"status":       newStatus,
+			"receive_time": time.Now(),
 		}); err != nil {
 			return err
 		}
@@ -691,10 +693,6 @@ func (s *TradeAfterSaleService) ReceiveAfterSale(ctx context.Context, adminUserI
 			return err
 		}
 
-		// 3. 更新订单项状态
-		if _, err := tx.TradeOrderItem.WithContext(ctx).Where(tx.TradeOrderItem.ID.Eq(as.OrderItemID)).Update(tx.TradeOrderItem.AfterSaleStatus, int32(newStatus)); err != nil {
-			return err
-		}
 		return nil
 	})
 }
@@ -711,14 +709,14 @@ func (s *TradeAfterSaleService) DeliveryAfterSale(ctx context.Context, userId in
 		return fmt.Errorf("售后状态不允许填写物流信息")
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态为买家已发货
 		newStatus := consts.AfterSaleStatusBuyerDelivery
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(req.ID)).Updates(trade.AfterSale{
-			Status:       newStatus,
-			LogisticsID:  req.LogisticsId,
-			LogisticsNo:  req.LogisticsNo,
-			DeliveryTime: time.Now(),
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{
+			"status":        newStatus,
+			"logistics_id":  *req.LogisticsId,
+			"logistics_no":  req.LogisticsNo,
+			"delivery_time": time.Now(),
 		}); err != nil {
 			return err
 		}
@@ -736,11 +734,6 @@ func (s *TradeAfterSaleService) DeliveryAfterSale(ctx context.Context, userId in
 			return err
 		}
 
-		// 3. 更新订单项状态
-		if _, err := tx.TradeOrderItem.WithContext(ctx).Where(tx.TradeOrderItem.ID.Eq(as.OrderItemID)).Update(tx.TradeOrderItem.AfterSaleStatus, int32(newStatus)); err != nil {
-			return err
-		}
-
 		return nil
 	})
 }
@@ -755,7 +748,21 @@ func (s *TradeAfterSaleService) UpdateAfterSaleRefunded(ctx context.Context, aft
 		return nil
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	if as.Status != consts.AfterSaleStatusWaitRefund {
+		return fmt.Errorf("售后单状态不是待退款")
+	}
+	if as.RefundPrice > 0 {
+		refund, err := s.payRefundSvc.GetRefund(ctx, payRefundId)
+		if err != nil {
+			return err
+		}
+		if refund == nil || refund.Status != pay.PayRefundStatusSuccess || refund.RefundPrice != as.RefundPrice || refund.MerchantOrderId != strconv.FormatInt(as.OrderID, 10) || refund.MerchantRefundId != strconv.FormatInt(as.ID, 10) {
+			return fmt.Errorf("支付退款信息不匹配")
+		}
+	} else if payRefundId != 0 {
+		return fmt.Errorf("零元售后不应关联支付退款")
+	}
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态为完成
 		newStatus := consts.AfterSaleStatusComplete
 		// 条件状态转换 + 影响行数校验：重复/乱序的退款回调不得重复更新订单项金额
@@ -836,12 +843,12 @@ func (s *TradeAfterSaleService) RefuseAfterSale(ctx context.Context, adminUserId
 		return fmt.Errorf("售后状态不是买家已发货，不能拒绝收货")
 	}
 
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		// 1. 更新售后单状态为卖家拒绝收货
-		if _, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(req.ID)).Updates(trade.AfterSale{
-			Status:        consts.AfterSaleStatusSellerRefuse,
-			ReceiveTime:   time.Now(),
-			ReceiveReason: req.RefuseMemo,
+		if err := s.updateAfterSale(ctx, tx, as, map[string]interface{}{
+			"status":         consts.AfterSaleStatusSellerRefuse,
+			"receive_time":   time.Now(),
+			"receive_reason": req.RefuseMemo,
 		}); err != nil {
 			return err
 		}
@@ -866,4 +873,16 @@ func (s *TradeAfterSaleService) RefuseAfterSale(ctx context.Context, adminUserId
 
 		return nil
 	})
+}
+
+// updateAfterSale keeps state changes and their dependent writes atomic.
+func (s *TradeAfterSaleService) updateAfterSale(ctx context.Context, tx *query.Query, as *trade.AfterSale, updates map[string]interface{}) error {
+	result, err := tx.AfterSale.WithContext(ctx).Where(tx.AfterSale.ID.Eq(as.ID), tx.AfterSale.Status.Eq(as.Status)).Updates(updates)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("售后状态已变化，请刷新后重试")
+	}
+	return nil
 }

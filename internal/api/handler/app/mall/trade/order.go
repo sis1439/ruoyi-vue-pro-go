@@ -72,7 +72,7 @@ func (h *AppTradeOrderHandler) SettlementOrder(c *gin.Context) {
 			response.WriteError(c, 400, "参数错误: pointStatus 缺失")
 			return
 		}
-		if r.DeliveryType == 0 {
+		if r.DeliveryType != 0 && r.DeliveryType != 1 && r.DeliveryType != 2 {
 			response.WriteError(c, 400, "参数错误: deliveryType 缺失或无效")
 			return
 		}
@@ -245,6 +245,11 @@ func (h *AppTradeOrderHandler) GetOrderDetail(c *gin.Context) {
 		VipPrice:              order.VipPrice,
 		CombinationRecordID:   order.CombinationRecordID,
 		Items:                 itemResps,
+	}
+
+	if err := h.querySvc.FillAppOrderDetail(c, order, &res); err != nil {
+		response.WriteBizError(c, err)
+		return
 	}
 
 	response.WriteSuccess(c, res)

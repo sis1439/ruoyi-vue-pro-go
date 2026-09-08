@@ -1,6 +1,7 @@
 package pay
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,7 @@ func (h *AppPayWalletTransactionHandler) GetWalletTransactionPage(c *gin.Context
 		response.WriteError(c, 400, "参数错误")
 		return
 	}
+	r.CreateTime = types.QueryTimeRange(c.Request.URL.Query(), "createTime")
 	r.WalletID = wallet.ID
 
 	pageResult, err := h.svc.GetWalletTransactionPage(c, &r)
@@ -54,7 +56,7 @@ func (h *AppPayWalletTransactionHandler) GetWalletTransactionPage(c *gin.Context
 			BizType:    item.BizType,
 			Price:      int64(item.Price),
 			Title:      item.Title,
-			CreateTime: item.CreateTime,
+			CreateTime: types.ToJsonDateTime(item.CreateTime),
 		}
 	}
 

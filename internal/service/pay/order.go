@@ -162,7 +162,7 @@ func (s *PayOrderService) SubmitOrder(ctx context.Context, reqVO *pay2.PayOrderS
 		ChannelID:   channel.ID,
 		ChannelCode: channel.Code,
 		UserIP:      userIP,
-		Status:      PayOrderStatusWaiting,
+		Status:      consts.PayOrderStatusWaiting,
 	}
 	if err := s.q.PayOrderExtension.WithContext(ctx).Create(ext); err != nil {
 		return nil, err
@@ -222,10 +222,10 @@ func (s *PayOrderService) validateOrderCanSubmit(ctx context.Context, id int64) 
 	if err != nil {
 		return nil, gorm.ErrRecordNotFound
 	}
-	if order.Status == PayOrderStatusSuccess {
+	if order.Status == consts.PayOrderStatusSuccess {
 		return nil, errors.New("order already paid")
 	}
-	if order.Status != PayOrderStatusWaiting {
+	if order.Status != consts.PayOrderStatusWaiting {
 		return nil, errors.New("order status not waiting")
 	}
 	if order.ExpireTime.Before(time.Now()) {
@@ -245,13 +245,13 @@ func (s *PayOrderService) ValidateOrderActuallyPaid(ctx context.Context, orderID
 	}
 
 	// 2. 如果订单已支付或已关闭，直接返回
-	if order.Status != PayOrderStatusWaiting {
+	if order.Status != consts.PayOrderStatusWaiting {
 		return order, nil
 	}
 
 	// 3. 查询订单的支付扩展信息（待支付的）
 	ext, err := s.q.PayOrderExtension.WithContext(ctx).
-		Where(s.q.PayOrderExtension.OrderID.Eq(orderID), s.q.PayOrderExtension.Status.Eq(PayOrderStatusWaiting)).
+		Where(s.q.PayOrderExtension.OrderID.Eq(orderID), s.q.PayOrderExtension.Status.Eq(consts.PayOrderStatusWaiting)).
 		First()
 	if err != nil || ext == nil {
 		// 没有待支付的拓展单，可能已经处理过了
@@ -276,7 +276,7 @@ func (s *PayOrderService) ValidateOrderActuallyPaid(ctx context.Context, orderID
 	}
 
 	// 6. 如果支付未成功，直接返回
-	if respDTO.Status != PayOrderStatusSuccess {
+	if respDTO.Status != consts.PayOrderStatusSuccess {
 		return order, nil
 	}
 
@@ -325,7 +325,7 @@ func (s *PayOrderService) ExpireOrder(ctx context.Context) (int64, error) {
 		// 1. 查询所有待支付且已过期的订单
 		expiredOrders, err := tx.PayOrder.WithContext(ctx).
 			Where(
-				tx.PayOrder.Status.Eq(PayOrderStatusWaiting),
+				tx.PayOrder.Status.Eq(consts.PayOrderStatusWaiting),
 				tx.PayOrder.ExpireTime.Lt(now),
 			).
 			Find()
@@ -348,7 +348,7 @@ func (s *PayOrderService) ExpireOrder(ctx context.Context) (int64, error) {
 		_, err = tx.PayOrder.WithContext(ctx).
 			Where(tx.PayOrder.ID.In(orderIDs...)).
 			Updates(map[string]interface{}{
-				"status": PayOrderStatusClosed,
+				"status": consts.PayOrderStatusClosed,
 			})
 		if err != nil {
 			return err
@@ -358,10 +358,10 @@ func (s *PayOrderService) ExpireOrder(ctx context.Context) (int64, error) {
 		_, err = tx.PayOrderExtension.WithContext(ctx).
 			Where(
 				tx.PayOrderExtension.OrderID.In(orderIDs...),
-				tx.PayOrderExtension.Status.Eq(PayOrderStatusWaiting),
+				tx.PayOrderExtension.Status.Eq(consts.PayOrderStatusWaiting),
 			).
 			Updates(map[string]interface{}{
-				"status": PayOrderStatusClosed,
+				"status": consts.PayOrderStatusClosed,
 			})
 
 		return err
@@ -388,7 +388,7 @@ func (s *PayOrderService) SyncOrderQuietlyThrottled(ctx context.Context, id int6
 func (s *PayOrderService) SyncOrderQuietly(ctx context.Context, id int64) {
 	// 1. 查询待支付订单拓展
 	extensions, err := s.q.PayOrderExtension.WithContext(ctx).
-		Where(s.q.PayOrderExtension.OrderID.Eq(id), s.q.PayOrderExtension.Status.Eq(PayOrderStatusWaiting)).
+		Where(s.q.PayOrderExtension.OrderID.Eq(id), s.q.PayOrderExtension.Status.Eq(consts.PayOrderStatusWaiting)).
 		Find()
 	if err != nil {
 		return
@@ -421,7 +421,7 @@ func (s *PayOrderService) syncOrder(ctx context.Context, orderExtension *pay.Pay
 	// 存在以下场景:拉起渠道支付后,短时间内用户未及时完成支付,但是该订单同步定时任务恰巧自动触发了,
 	// 主动查询结果为订单不存在。当用户支付成功之后,该订单状态在渠道的回调中无法从已关闭改为已支付,造成重大影响。
 	// 考虑此定时任务是异常场景的兜底操作,因此这里不做变更,优先以回调为准。
-	if respDTO.Status == PayOrderStatusClosed {
+	if respDTO.Status == consts.PayOrderStatusClosed {
 		return false
 	}
 
@@ -431,7 +431,7 @@ func (s *PayOrderService) syncOrder(ctx context.Context, orderExtension *pay.Pay
 	}
 
 	// 2. 如果是已支付,则返回 true
-	return respDTO.Status == PayOrderStatusSuccess
+	return respDTO.Status == consts.PayOrderStatusSuccess
 }
 
 // NotifyOrder 通知并更新订单的支付结果（已包装事务）
@@ -449,10 +449,10 @@ func (s *PayOrderService) NotifyOrder(ctx context.Context, channelID int64, noti
 	// 使用 GORM 事务包装（对齐 Java @Transactional）
 	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		switch notify.Status {
-		case PayOrderStatusSuccess:
+		case consts.PayOrderStatusSuccess:
 			// 情况一: 支付成功的回调
 			return s.notifyOrderSuccessTx(ctx, tx, channel, notify)
-		case PayOrderStatusClosed:
+		case consts.PayOrderStatusClosed:
 			// 情况二: 支付失败的回调
 			return s.notifyOrderClosedTx(ctx, tx, channel, notify)
 		default:
@@ -496,21 +496,21 @@ func (s *PayOrderService) updateOrderExtensionSuccessTx(ctx context.Context, tx 
 	}
 
 	// 如果已经是成功，直接返回，不用重复更新
-	if orderExtension.Status == PayOrderStatusSuccess {
+	if orderExtension.Status == consts.PayOrderStatusSuccess {
 		return orderExtension, nil
 	}
 
 	// 校验状态，必须是待支付
-	if orderExtension.Status != PayOrderStatusWaiting {
+	if orderExtension.Status != consts.PayOrderStatusWaiting {
 		return nil, fmt.Errorf("支付订单拓展状态不是待支付")
 	}
 
 	// 2. 更新 PayOrderExtension (使用乐观锁)
 	notifyDataJSON, _ := json.Marshal(notify)
 	result, err := tx.PayOrderExtension.WithContext(ctx).
-		Where(tx.PayOrderExtension.ID.Eq(orderExtension.ID), tx.PayOrderExtension.Status.Eq(PayOrderStatusWaiting)).
+		Where(tx.PayOrderExtension.ID.Eq(orderExtension.ID), tx.PayOrderExtension.Status.Eq(consts.PayOrderStatusWaiting)).
 		Updates(map[string]interface{}{
-			"status":              PayOrderStatusSuccess,
+			"status":              consts.PayOrderStatusSuccess,
 			"channel_notify_data": string(notifyDataJSON),
 		})
 
@@ -518,7 +518,7 @@ func (s *PayOrderService) updateOrderExtensionSuccessTx(ctx context.Context, tx 
 		return nil, fmt.Errorf("支付订单拓展状态不是待支付")
 	}
 
-	orderExtension.Status = PayOrderStatusSuccess
+	orderExtension.Status = consts.PayOrderStatusSuccess
 	return orderExtension, nil
 }
 
@@ -542,12 +542,12 @@ func (s *PayOrderService) updateOrderSuccessTx(ctx context.Context, tx *query.Qu
 		return false, fmt.Errorf("支付渠道或应用不匹配")
 	}
 	// 如果已经是成功，直接返回，不用重复更新
-	if order.Status == PayOrderStatusSuccess && order.ExtensionID == orderExtension.ID {
+	if order.Status == consts.PayOrderStatusSuccess && order.ExtensionID == orderExtension.ID {
 		return true, nil
 	}
 
 	// 校验状态，必须是待支付
-	if order.Status != PayOrderStatusWaiting {
+	if order.Status != consts.PayOrderStatusWaiting {
 		return false, fmt.Errorf("支付订单状态不是待支付")
 	}
 
@@ -556,9 +556,9 @@ func (s *PayOrderService) updateOrderSuccessTx(ctx context.Context, tx *query.Qu
 	now := time.Now()
 
 	result, err := tx.PayOrder.WithContext(ctx).
-		Where(tx.PayOrder.ID.Eq(order.ID), tx.PayOrder.Status.Eq(PayOrderStatusWaiting)).
+		Where(tx.PayOrder.ID.Eq(order.ID), tx.PayOrder.Status.Eq(consts.PayOrderStatusWaiting)).
 		Updates(map[string]interface{}{
-			"status":            PayOrderStatusSuccess,
+			"status":            consts.PayOrderStatusSuccess,
 			"channel_id":        channel.ID,
 			"channel_code":      channel.Code,
 			"success_time":      &now,
@@ -588,25 +588,25 @@ func (s *PayOrderService) notifyOrderClosedTx(ctx context.Context, tx *query.Que
 	}
 
 	// 如果已经是关闭，直接返回
-	if orderExtension.Status == PayOrderStatusClosed {
+	if orderExtension.Status == consts.PayOrderStatusClosed {
 		return nil
 	}
 
 	// 如果已经是成功，不更新为关闭（避免状态冲突）
-	if orderExtension.Status == PayOrderStatusSuccess {
+	if orderExtension.Status == consts.PayOrderStatusSuccess {
 		return nil
 	}
 
 	// 校验状态，必须是待支付
-	if orderExtension.Status != PayOrderStatusWaiting {
+	if orderExtension.Status != consts.PayOrderStatusWaiting {
 		return fmt.Errorf("支付订单拓展状态不是待支付")
 	}
 
 	// 更新拓展单为关闭
 	result, err := tx.PayOrderExtension.WithContext(ctx).
-		Where(tx.PayOrderExtension.ID.Eq(orderExtension.ID), tx.PayOrderExtension.Status.Eq(PayOrderStatusWaiting)).
+		Where(tx.PayOrderExtension.ID.Eq(orderExtension.ID), tx.PayOrderExtension.Status.Eq(consts.PayOrderStatusWaiting)).
 		Updates(map[string]interface{}{
-			"status":             PayOrderStatusClosed,
+			"status":             consts.PayOrderStatusClosed,
 			"channel_error_code": notify.ChannelErrorCode,
 			"channel_error_msg":  notify.ChannelErrorMsg,
 		})
@@ -622,14 +622,14 @@ func (s *PayOrderService) notifyOrderClosedTx(ctx context.Context, tx *query.Que
 		return fmt.Errorf("支付订单不存在")
 	}
 
-	if order.Status != PayOrderStatusWaiting {
+	if order.Status != consts.PayOrderStatusWaiting {
 		return nil // 订单已处理过，不需要重复关闭
 	}
 
 	result, err = tx.PayOrder.WithContext(ctx).
-		Where(tx.PayOrder.ID.Eq(order.ID), tx.PayOrder.Status.Eq(PayOrderStatusWaiting)).
+		Where(tx.PayOrder.ID.Eq(order.ID), tx.PayOrder.Status.Eq(consts.PayOrderStatusWaiting)).
 		Updates(map[string]interface{}{
-			"status": PayOrderStatusClosed,
+			"status": consts.PayOrderStatusClosed,
 		})
 	if err != nil || result.RowsAffected == 0 {
 		return fmt.Errorf("支付订单状态已改变")
@@ -648,7 +648,7 @@ func (s *PayOrderService) UpdatePayOrderPrice(ctx context.Context, id int64, pay
 	}
 
 	// 2. 校验状态：必须是待支付
-	if order.Status != PayOrderStatusWaiting {
+	if order.Status != consts.PayOrderStatusWaiting {
 		return fmt.Errorf("支付订单状态不是待支付，无法修改价格")
 	}
 
@@ -675,7 +675,7 @@ func (s *PayOrderService) UpdateOrderRefundPrice(ctx context.Context, id int64, 
 	}
 
 	// 校验状态：必须是已支付或已退款
-	if order.Status != PayOrderStatusSuccess && order.Status != PayOrderStatusRefund {
+	if order.Status != consts.PayOrderStatusSuccess && order.Status != consts.PayOrderStatusRefund {
 		return fmt.Errorf("支付订单状态不是已支付或已退款")
 	}
 
@@ -689,7 +689,7 @@ func (s *PayOrderService) UpdateOrderRefundPrice(ctx context.Context, id int64, 
 		Where(q.PayOrder.ID.Eq(id), q.PayOrder.Status.Eq(order.Status), q.PayOrder.RefundPrice.Eq(order.RefundPrice)).
 		Updates(map[string]interface{}{
 			"refund_price": order.RefundPrice + incrRefundPrice,
-			"status":       PayOrderStatusRefund,
+			"status":       consts.PayOrderStatusRefund,
 		})
 
 	if err != nil || result.RowsAffected == 0 {
@@ -729,7 +729,7 @@ func (s *PayOrderService) SyncOrder(ctx context.Context, minCreateTime time.Time
 	// 1. 查询指定创建时间内的待支付订单拓展
 	extensions, err := s.q.PayOrderExtension.WithContext(ctx).
 		Where(
-			s.q.PayOrderExtension.Status.Eq(PayOrderStatusWaiting),
+			s.q.PayOrderExtension.Status.Eq(consts.PayOrderStatusWaiting),
 			s.q.PayOrderExtension.CreateTime.Gte(minCreateTime),
 		).
 		Find()

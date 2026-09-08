@@ -2,6 +2,7 @@ package pay
 
 import (
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
@@ -41,7 +42,7 @@ func (h *PayOrderHandler) GetOrder(c *gin.Context) {
 	syncStr := c.Query("sync")
 	if syncStr == "true" {
 		order, err := h.svc.GetOrder(c, id)
-		if err == nil && order.Status == paySvc.PayOrderStatusWaiting {
+		if err == nil && order.Status == consts.PayOrderStatusWaiting {
 			h.svc.SyncOrderQuietly(c, id)
 		}
 	}
@@ -218,13 +219,13 @@ func (h *PayOrderHandler) ExportOrderExcel(c *gin.Context) {
 
 		statusStr := "未知"
 		switch item.Status {
-		case paySvc.PayOrderStatusWaiting:
+		case consts.PayOrderStatusWaiting:
 			statusStr = "等待支付"
-		case paySvc.PayOrderStatusSuccess:
+		case consts.PayOrderStatusSuccess:
 			statusStr = "支付成功"
-		case paySvc.PayOrderStatusClosed:
+		case consts.PayOrderStatusClosed:
 			statusStr = "支付关闭"
-		case paySvc.PayOrderStatusRefund:
+		case consts.PayOrderStatusRefund:
 			statusStr = "已退款"
 		}
 
@@ -277,15 +278,15 @@ func convertOrderResp(order *pay.PayOrder) *pay2.PayOrderResp {
 		ChannelFeePrice: order.ChannelFeePrice,
 		Status:          order.Status,
 		UserIP:          order.UserIP,
-		ExpireTime:      order.ExpireTime,
-		SuccessTime:     order.SuccessTime,
+		ExpireTime:      types.ToJsonDateTime(order.ExpireTime),
+		SuccessTime:     types.ToJsonDateTimePtr(order.SuccessTime),
 		ExtensionID:     order.ExtensionID,
 		No:              order.No,
 		RefundPrice:     int64(order.RefundPrice), // 转换为 int64
 		ChannelUserID:   order.ChannelUserID,
 		ChannelOrderNo:  order.ChannelOrderNo,
-		CreateTime:      order.CreateTime,
-		UpdateTime:      order.UpdateTime,
+		CreateTime:      types.ToJsonDateTime(order.CreateTime),
+		UpdateTime:      types.ToJsonDateTime(order.UpdateTime),
 		Creator:         order.Creator,
 		Updater:         order.Updater,
 	}

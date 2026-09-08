@@ -157,20 +157,20 @@ func (s *TradePriceService) calculatePriceInternal(ctx context.Context, req *Tra
 func (s *TradePriceService) validateRequest(req *TradePriceCalculateReqBO) error {
 	// 基本参数验证
 	if req.UserID <= 0 {
-		return pkgErrors.NewBizError(1004003001, "用户ID不能为空")
+		return pkgErrors.NewBizError(1011900001, "用户ID不能为空")
 	}
 
 	if len(req.Items) == 0 {
-		return pkgErrors.NewBizError(1004003001, "计算价格时，商品不能为空")
+		return pkgErrors.NewBizError(1011900001, "计算价格时，商品不能为空")
 	}
 
 	// 验证商品项参数
 	for _, item := range req.Items {
 		if item.SkuID <= 0 {
-			return pkgErrors.NewBizError(1004003001, "商品SKU ID不能为空")
+			return pkgErrors.NewBizError(1011900001, "商品SKU ID不能为空")
 		}
 		if item.Count <= 0 {
-			return pkgErrors.NewBizError(1004003001, "商品数量必须大于0")
+			return pkgErrors.NewBizError(1011900001, "商品数量必须大于0")
 		}
 	}
 
@@ -194,7 +194,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 	skuList, err := s.skuSvc.GetSkuList(ctx, skuIDs)
 	if err != nil {
 		s.logger.Error("获取SKU信息失败", zap.Error(err))
-		return pkgErrors.NewBizError(1004003002, "获取商品SKU信息失败")
+		return pkgErrors.NewBizError(1011900002, "获取商品SKU信息失败")
 	}
 
 	// 3. 构建 SKU Map
@@ -223,7 +223,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 	spuList, err := s.spuSvc.GetSpuList(ctx, spuIDs)
 	if err != nil {
 		s.logger.Error("获取SPU信息失败", zap.Error(err))
-		return pkgErrors.NewBizError(1004003002, "获取商品SPU信息失败")
+		return pkgErrors.NewBizError(1011900002, "获取商品SPU信息失败")
 	}
 
 	// 5. 构建 SPU Map
@@ -250,7 +250,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 			s.logger.Error("SKU不存在",
 				zap.Int64("skuId", reqItem.SkuID),
 			)
-			return pkgErrors.NewBizError(1004003002, fmt.Sprintf("商品SKU[%d]不存在", reqItem.SkuID))
+			return pkgErrors.NewBizError(1011900002, fmt.Sprintf("商品SKU[%d]不存在", reqItem.SkuID))
 		}
 
 		spu, spuExists := spuMap[sku.SpuID]
@@ -258,7 +258,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 			s.logger.Error("SPU不存在",
 				zap.Int64("spuId", sku.SpuID),
 			)
-			return pkgErrors.NewBizError(1004003002, fmt.Sprintf("商品SPU[%d]不存在", sku.SpuID))
+			return pkgErrors.NewBizError(1011900002, fmt.Sprintf("商品SPU[%d]不存在", sku.SpuID))
 		}
 
 		// 验证 SPU 状态
@@ -267,7 +267,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 				zap.Int64("spuId", spu.ID),
 				zap.Int("status", spu.Status),
 			)
-			return pkgErrors.NewBizError(1004003002, fmt.Sprintf("商品[%s]已下架", spu.Name))
+			return pkgErrors.NewBizError(1011900002, fmt.Sprintf("商品[%s]已下架", spu.Name))
 		}
 
 		// 验证库存
@@ -277,7 +277,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 				zap.Int("requestCount", reqItem.Count),
 				zap.Int("stock", sku.Stock),
 			)
-			return pkgErrors.NewBizError(1004003003, fmt.Sprintf("商品[%s]库存不足", spu.Name))
+			return pkgErrors.NewBizError(1011900003, fmt.Sprintf("商品[%s]库存不足", spu.Name))
 		}
 
 		// 构建商品项
@@ -333,7 +333,7 @@ func (s *TradePriceService) buildItemsResponse(ctx context.Context, req *TradePr
 func (s *TradePriceService) validateResponse(req *TradePriceCalculateReqBO, resp *TradePriceCalculateRespBO) error {
 	// 验证商品项数量一致性
 	if len(resp.Items) == 0 {
-		return pkgErrors.NewBizError(1004003001, "商品项不能为空")
+		return pkgErrors.NewBizError(1011900001, "商品项不能为空")
 	}
 
 	// 验证支付金额（积分订单允许支付金额为0）
@@ -344,7 +344,7 @@ func (s *TradePriceService) validateResponse(req *TradePriceCalculateReqBO, resp
 			zap.Int("totalPrice", resp.Price.TotalPrice),
 			zap.Int("discountPrice", resp.Price.DiscountPrice),
 		)
-		return pkgErrors.NewBizError(1004003004, "支付金额不合法")
+		return pkgErrors.NewBizError(1011003000, "支付金额不合法")
 	}
 
 	return nil

@@ -17,6 +17,7 @@ type ProductBrowseHistoryPageReq struct {
 
 // AppProductBrowseHistoryPageReq (App)
 type AppProductBrowseHistoryPageReq struct {
+	CreateTime []string `form:"createTime[]"`
 	pagination.PageParam
 }
 

@@ -13,7 +13,6 @@ const (
 	TradeOrderItemAfterSaleStatusNone    = 0  // 无
 	TradeOrderItemAfterSaleStatusApply   = 10 // 申请中
 	TradeOrderItemAfterSaleStatusSuccess = 20 // 成功
-	TradeOrderItemAfterSaleStatusFailure = 30 // 失败
 )
 
 // TradeOrder 交易订单

@@ -2,6 +2,8 @@ package member
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/internal/pkg/area"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 	member2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
@@ -151,12 +153,13 @@ func (s *MemberAddressService) updateDefaultStatus(ctx context.Context, tx *quer
 
 func (s *MemberAddressService) convertResp(item *member.MemberAddress) *member2.AppAddressResp {
 	return &member2.AppAddressResp{
+		AreaName:      area.Format(int(item.AreaID)),
 		ID:            item.ID,
 		Name:          item.Name,
 		Mobile:        item.Mobile,
 		AreaID:        item.AreaID,
 		DetailAddress: item.DetailAddress,
 		DefaultStatus: bool(item.DefaultStatus),
-		CreateTime:    item.CreateTime,
+		CreateTime:    types.ToJsonDateTime(item.CreateTime),
 	}
 }

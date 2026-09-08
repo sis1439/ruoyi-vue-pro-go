@@ -142,21 +142,7 @@ func (h *AppBrokerageUserHandler) GetBrokerageUserChildSummaryPage(c *gin.Contex
 		response.WriteError(c, 500, err.Error())
 		return
 	}
-	// Convert to RESP VO (Fetch User Info)
-	// Placeholder conversion
-	list := make([]tradeDto.AppBrokerageUserChildSummaryRespVO, len(pageResult.List))
-	for i, u := range pageResult.List {
-		list[i] = tradeDto.AppBrokerageUserChildSummaryRespVO{
-			ID:             u.ID,
-			BrokeragePrice: u.BrokeragePrice,
-			// Nickname/Avatar need member service
-		}
-	}
-
-	response.WriteSuccess(c, &pagination.PageResult[tradeDto.AppBrokerageUserChildSummaryRespVO]{
-		List:  list,
-		Total: pageResult.Total,
-	})
+	response.WriteSuccess(c, pageResult)
 }
 
 // GetBrokerageUserRankPageByUserCount 获得分销用户排行分页（基于用户量）

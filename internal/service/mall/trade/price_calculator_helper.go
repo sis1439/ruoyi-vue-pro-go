@@ -67,15 +67,6 @@ func (h *PriceCalculatorHelper) DividePrice(items []TradePriceCalculateItemRespB
 	// 按比例分摊
 	dividedPrices := make([]int, len(items))
 	remainPrice := totalDiscount
-	lastSelectedIndex := -1
-
-	// 找到最后一个选中项的索引
-	for i := len(items) - 1; i >= 0; i-- {
-		if items[i].Selected {
-			lastSelectedIndex = i
-			break
-		}
-	}
 
 	for i := 0; i < len(items); i++ {
 		// 1. 如果是未选中，则分摊为 0
@@ -84,9 +75,9 @@ func (h *PriceCalculatorHelper) DividePrice(items []TradePriceCalculateItemRespB
 			continue
 		}
 		// 2. 如果选中，则按照百分比进行分摊
-		if i < lastSelectedIndex {
+		if i < len(items)-1 {
 			// 前 n-1 项按比例计算
-			dividedPrices[i] = int(int64(totalDiscount) * int64(items[i].PayPrice) / int64(totalPayPrice))
+			dividedPrices[i] = int(float64(totalDiscount) * (float64(items[i].PayPrice) / float64(totalPayPrice)))
 			remainPrice -= dividedPrices[i]
 		} else {
 			// 最后一项用剩余金额（避免舍入误差）
@@ -110,9 +101,6 @@ func (h *PriceCalculatorHelper) RecountPayPrice(item *TradePriceCalculateItemRes
 	originalPayPrice := item.PayPrice
 
 	item.PayPrice = item.Price*item.Count - item.DiscountPrice + item.DeliveryPrice - item.CouponPrice - item.PointPrice - item.VipPrice
-	if item.PayPrice < 0 {
-		item.PayPrice = 0
-	}
 
 	h.logger.Debug("重新计算支付金额",
 		zap.Int64("skuId", item.SkuID),

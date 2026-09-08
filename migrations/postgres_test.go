@@ -2,6 +2,7 @@ package migrations_test
 
 import (
 	"errors"
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/member"
@@ -29,7 +30,7 @@ func TestPostgresMigrationCoverageAndRepeat(t *testing.T) {
 	require.NoError(t, err)
 	var version uint
 	require.NoError(t, db.Raw("SELECT version FROM schema_migrations").Scan(&version).Error)
-	require.Equal(t, uint(6), version)
+	require.Equal(t, uint(7), version)
 	for _, entry := range models.Models {
 		s, err := schema.Parse(entry.Model, new(sync.Map), schema.NamingStrategy{})
 		require.NoError(t, err)
@@ -56,7 +57,7 @@ func TestPostgresMigrationCoverageAndRepeat(t *testing.T) {
 func TestPostgresBaselineUpgradePreservesData(t *testing.T) {
 	db := testutil.PostgreSQLAt(t, 1)
 	user := member.MemberUser{Mobile: "15500000001", Nickname: "before upgrade", TenantBaseDO: model.TenantBaseDO{TenantID: 7}}
-	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Omit("Email").Create(&user).Error)
 	pool, err := db.DB()
 	require.NoError(t, err)
 	require.NoError(t, migrations.Apply(pool, 0))
@@ -221,4 +222,28 @@ func TestPostgresTradePermissionsUpgrade(t *testing.T) {
 	require.NoError(t, migrations.Apply(pool, 0))
 	require.NoError(t, db.Model(&model.SystemRoleMenu{}).Count(&count).Error)
 	require.Equal(t, before, count)
+}
+
+func TestJavaAlignmentUpgradeEnums(t *testing.T) {
+	db := testutil.PostgreSQLAt(t, 6)
+	require.NoError(t, db.Exec("INSERT INTO pay_order(id,no,status,tenant_id) VALUES (991,'old-closed',20,1),(992,'old-refund',30,1)").Error)
+	for i, reason := range []int{10, 20, 50, 70} {
+		require.NoError(t, db.Create(&trade.TradeOrder{ID: int64(991 + i), No: fmt.Sprint(991 + i), CancelType: reason, TenantBaseDO: model.TenantBaseDO{TenantID: 1}}).Error)
+	}
+	pool, err := db.DB()
+	require.NoError(t, err)
+	require.NoError(t, migrations.Apply(pool, 0))
+	var states []int
+	require.NoError(t, db.Raw("SELECT status FROM pay_order WHERE id IN (991,992) ORDER BY id").Scan(&states).Error)
+	require.Equal(t, []int{30, 20}, states)
+	var reasons []int
+	require.NoError(t, db.Raw("SELECT cancel_type FROM trade_order WHERE id BETWEEN 991 AND 994 ORDER BY id").Scan(&reasons).Error)
+	require.Equal(t, []int{30, 10, 20, 40}, reasons)
+	require.NoError(t, migrations.Apply(pool, 0))
+	var again []int
+	require.NoError(t, db.Raw("SELECT status FROM pay_order WHERE id IN (991,992) ORDER BY id").Scan(&again).Error)
+	require.Equal(t, states, again)
+	var jobs int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM infra_job WHERE handler_name='combinationRecordExpireJob' AND deleted=0").Scan(&jobs).Error)
+	require.EqualValues(t, 1, jobs)
 }

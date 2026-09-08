@@ -65,6 +65,7 @@ func (s *MemberUserService) GetUserInfo(ctx context.Context, id int64) (*member2
 		Nickname:         user.Nickname,
 		Avatar:           user.Avatar,
 		Mobile:           user.Mobile,
+		Email:            user.Email,
 		Sex:              user.Sex,
 		Point:            user.Point,
 		Experience:       user.Experience,
@@ -137,14 +138,23 @@ func (s *MemberUserService) UpdateUser(ctx context.Context, id int64, req *membe
 		return errors.New("user not found")
 	}
 
-	// 更新字段
-	_, err = u.WithContext(ctx).Where(u.ID.Eq(id)).
-		Select(u.Nickname, u.Avatar, u.Sex).
-		Updates(&member.MemberUser{
-			Nickname: req.Nickname,
-			Avatar:   req.Avatar,
-			Sex:      int32(req.Sex),
-		})
+	updates := map[string]interface{}{}
+	if req.Nickname != nil {
+		updates["nickname"] = *req.Nickname
+	}
+	if req.Avatar != nil {
+		updates["avatar"] = *req.Avatar
+	}
+	if req.Sex != nil {
+		updates["sex"] = *req.Sex
+	}
+	if req.Email != nil {
+		updates["email"] = *req.Email
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	_, err = u.WithContext(ctx).Where(u.ID.Eq(id)).Updates(updates)
 	return err
 }
 
@@ -207,13 +217,13 @@ func (s *MemberUserService) UpdateUserPassword(ctx context.Context, id int64, re
 		return errors.New("user not found")
 	}
 
-	// 2. Validate Old Password
-	if !utils.CheckPasswordHash(req.OldPassword, user.Password) {
-		return errors.New("invalid old password")
+	// 2. 校验并消费当前用户手机号的修改密码验证码
+	if err := s.smsCodeSvc.UseSmsCode(ctx, user.Mobile, system.SmsSceneMemberUpdatePwd.Scene, req.Code, ""); err != nil {
+		return err
 	}
 
 	// 3. Hash New Password
-	hashedPwd, err := utils.HashPassword(req.NewPassword)
+	hashedPwd, err := utils.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}

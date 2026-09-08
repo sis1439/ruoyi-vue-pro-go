@@ -3,6 +3,7 @@ package promotion
 import (
 	"context"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	promotion2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/promotion"
@@ -123,7 +124,7 @@ func (s *combinationRecordService) GetCombinationRecordPage(ctx context.Context,
 			ActivityID:       item.ActivityID,
 			Nickname:         item.Nickname,
 			Avatar:           item.Avatar,
-			ExpireTime:       item.ExpireTime,
+			ExpireTime:       types.ToJsonDateTime(item.ExpireTime),
 			UserSize:         item.UserSize,
 			UserCount:        item.UserCount,
 			Status:           item.Status,
@@ -171,7 +172,7 @@ func (s *combinationRecordService) GetCombinationRecordDetail(ctx context.Contex
 			ActivityID:       r.ActivityID,
 			Nickname:         r.Nickname,
 			Avatar:           r.Avatar,
-			ExpireTime:       r.ExpireTime,
+			ExpireTime:       types.ToJsonDateTime(r.ExpireTime),
 			UserSize:         r.UserSize,
 			UserCount:        r.UserCount,
 			Status:           r.Status,
@@ -421,17 +422,15 @@ func (s *combinationRecordService) ExpireCombinationRecord(ctx context.Context) 
 		// 校验活动是否支持虚拟成团
 		activity, err := s.activitySvc.GetCombinationActivity(ctx, head.ActivityID)
 		if err != nil {
-			continue
+			return err
 		}
 		if activity.VirtualGroup {
 			if err := s.handleVirtualGroupRecord(ctx, head); err != nil {
-				// Log error?
-				continue
+				return err
 			}
 		} else {
 			if err := s.handleExpireRecord(ctx, head); err != nil {
-				// Log error?
-				continue
+				return err
 			}
 		}
 	}
@@ -459,9 +458,8 @@ func (s *combinationRecordService) handleExpireRecord(ctx context.Context, head 
 
 		// 3. 取消订单并退款 (对齐 Java: tradeOrderApi.cancelPaidOrder)
 		for _, r := range records {
-			if err := s.tradeSvc.CancelPaidOrder(ctx, r.UserID, r.OrderID, consts.OrderCancelTypeCombinationClose); err != nil {
-				// 记录错误但不阻断其余订单处理
-				continue
+			if err := s.tradeSvc.CancelPaidOrder(ctx, r.UserID, r.OrderID, consts.TradeOrderCancelTypeCombinationClose); err != nil {
+				return err
 			}
 		}
 		return nil

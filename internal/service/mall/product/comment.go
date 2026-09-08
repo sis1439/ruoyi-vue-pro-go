@@ -2,6 +2,7 @@ package product
 
 import (
 	"context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	product2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
@@ -156,6 +157,8 @@ func (s *ProductCommentService) GetAppCommentPage(ctx context.Context, r *produc
 			nickname = "匿名用户"
 		}
 		return &product2.AppProductCommentResp{
+			UserID: item.UserID, Anonymous: bool(item.Anonymous), OrderID: item.OrderID, OrderItemID: item.OrderItemID, SkuID: item.SkuID, SpuID: item.SpuID, DescriptionScores: item.DescriptionScores, BenefitScores: item.BenefitScores, ReplyStatus: bool(item.ReplyStatus), ReplyUserID: item.ReplyUserID,
+			SpuName: item.SpuName, ReplyTime: types.ToJsonDateTimePtr(item.ReplyTime),
 			ID:            item.ID,
 			UserNickname:  nickname,
 			UserAvatar:    item.UserAvatar,
@@ -164,7 +167,7 @@ func (s *ProductCommentService) GetAppCommentPage(ctx context.Context, r *produc
 			PicURLs:       item.PicURLs,
 			ReplyContent:  item.ReplyContent,
 			SkuProperties: s.convertSkuProperties(item.SkuProperties),
-			CreateTime:    item.CreateTime,
+			CreateTime:    types.ToJsonDateTime(item.CreateTime),
 		}
 	})
 

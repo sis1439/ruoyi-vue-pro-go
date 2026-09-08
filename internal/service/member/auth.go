@@ -3,6 +3,7 @@ package member
 import (
 	"context"
 	pkgContext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strings"
 
 	member2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/member"
@@ -244,7 +245,7 @@ func (s *MemberAuthService) RefreshToken(ctx context.Context, refreshToken, ip, 
 	if err != nil {
 		return nil, err
 	}
-	return &member2.AppAuthLoginResp{UserID: user.ID, AccessToken: tokenDO.AccessToken, RefreshToken: tokenDO.RefreshToken, ExpiresTime: tokenDO.ExpiresTime}, nil
+	return &member2.AppAuthLoginResp{UserID: user.ID, AccessToken: tokenDO.AccessToken, RefreshToken: tokenDO.RefreshToken, ExpiresTime: types.ToJsonDateTime(tokenDO.ExpiresTime)}, nil
 }
 
 // Logout 退出登录
@@ -291,7 +292,7 @@ func (s *MemberAuthService) createToken(ctx context.Context, user *member.Member
 		UserID:       user.ID,
 		AccessToken:  tokenDO.AccessToken,
 		RefreshToken: tokenDO.RefreshToken,
-		ExpiresTime:  tokenDO.ExpiresTime,
+		ExpiresTime:  types.ToJsonDateTime(tokenDO.ExpiresTime),
 		OpenID:       openid,
 	}, nil
 }

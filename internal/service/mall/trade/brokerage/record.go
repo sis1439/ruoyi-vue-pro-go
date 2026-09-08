@@ -187,8 +187,7 @@ func (s *BrokerageRecordService) ReduceBrokerageForWithdraw(ctx context.Context,
 // CalculateProductBrokeragePrice 计算商品佣金
 func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Context, userId int64, spuId int64) (*trade.AppBrokerageProductPriceRespVO, error) {
 	resp := &trade.AppBrokerageProductPriceRespVO{
-		BrokerageEnabled: false,
-		BrokeragePrice:   0,
+		Enabled: false,
 	}
 
 	// 1. 校验分销功能是否开启
@@ -202,7 +201,7 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 	if err != nil || user == nil || !user.BrokerageEnabled {
 		return resp, nil
 	}
-	resp.BrokerageEnabled = true
+	resp.Enabled = true
 
 	// 3. 校验商品是否存在
 	spu, err := s.spuSvc.GetSpu(ctx, spuId)
@@ -220,7 +219,7 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 	maxPrice := 0
 	percent := config.BrokerageFirstPercent
 
-	for _, sku := range skus {
+	for i, sku := range skus {
 		var brokeragePrice int
 		if spu.SubCommissionType {
 			// 商品单独分佣模式：使用 SKU 的固定佣金
@@ -230,7 +229,7 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 			brokeragePrice = sku.Price * percent / 100
 		}
 
-		if minPrice == 0 || brokeragePrice < minPrice {
+		if i == 0 || brokeragePrice < minPrice {
 			minPrice = brokeragePrice
 		}
 		if brokeragePrice > maxPrice {
@@ -238,8 +237,8 @@ func (s *BrokerageRecordService) CalculateProductBrokeragePrice(ctx context.Cont
 		}
 	}
 
-	// 使用最大佣金作为展示值
-	resp.BrokeragePrice = maxPrice
+	resp.BrokerageMinPrice = minPrice
+	resp.BrokerageMaxPrice = maxPrice
 
 	return resp, nil
 }
@@ -366,8 +365,8 @@ func (s *BrokerageRecordService) GetUserRankByPrice(ctx context.Context, userId 
 type BrokerageAddReqBO struct {
 	BizID            string // 业务编号
 	BasePrice        int    // 分佣基础价格
-	FirstFixedPrice  int    // 一级固定佣金
-	SecondFixedPrice int    // 二级固定佣金
+	FirstFixedPrice  *int   // 一级固定佣金
+	SecondFixedPrice *int   // 二级固定佣金
 	Title            string // 标题
 	SourceUserId     int64  // 来源用户编号（下单用户）
 }
@@ -424,7 +423,7 @@ func (s *BrokerageRecordService) addBrokerageForLevel(ctx context.Context, user 
 
 	for _, item := range list {
 		// 计算佣金金额
-		var fixedPrice int
+		var fixedPrice *int
 		if level == 1 {
 			fixedPrice = item.FirstFixedPrice
 		} else {
@@ -476,9 +475,9 @@ func (s *BrokerageRecordService) addBrokerageForLevel(ctx context.Context, user 
 }
 
 // calculatePrice 计算佣金价格
-func (s *BrokerageRecordService) calculatePrice(basePrice int, percent int, fixedPrice int) int {
-	if fixedPrice > 0 {
-		return fixedPrice
+func (s *BrokerageRecordService) calculatePrice(basePrice int, percent int, fixedPrice *int) int {
+	if fixedPrice != nil && *fixedPrice >= 0 {
+		return *fixedPrice
 	}
 	return basePrice * percent / 100
 }

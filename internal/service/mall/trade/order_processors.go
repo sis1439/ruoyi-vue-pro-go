@@ -11,7 +11,6 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/product"
 	tradeModel "github.com/wxlbd/ruoyi-mall-go/internal/consts"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
-	"github.com/wxlbd/ruoyi-mall-go/internal/service/pay"
 	"go.uber.org/zap"
 )
 
@@ -174,7 +173,7 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 	}
 
 	// 4.2 校验支付单状态
-	if payOrder.Status != pay.PayOrderStatusSuccess {
+	if payOrder.Status != tradeModel.PayOrderStatusSuccess {
 		p.logger.Error("支付单未支付成功",
 			zap.Int64("payOrderId", payOrder.ID),
 			zap.Int("status", payOrder.Status),
@@ -531,17 +530,16 @@ func (p *CancelOrderProcessor) AfterCancelOrder(ctx context.Context, handleReq *
 	order := resp.Order
 	orderItems := handleReq.OrderItems
 
-	// 1. 退还库存
-	if len(orderItems) > 0 {
-		stockItems := make([]product.ProductSkuUpdateStockItemReq, len(orderItems))
-		for i, item := range orderItems {
-			stockItems[i] = product.ProductSkuUpdateStockItemReq{
-				ID:        item.SkuID,
-				IncrCount: int(item.Count), // 正数表示增加（退还）
-			}
+	// 已售后的订单项由售后退款退库存，整单取消不得重复退还。
+	stockItems := make([]product.ProductSkuUpdateStockItemReq, 0, len(orderItems))
+	for _, item := range orderItems {
+		if item.AfterSaleStatus != 0 {
+			continue
 		}
+		stockItems = append(stockItems, product.ProductSkuUpdateStockItemReq{ID: item.SkuID, IncrCount: int(item.Count)})
+	}
+	if len(stockItems) > 0 {
 		if err := p.skuSvc.UpdateSkuStock(ctx, &product.ProductSkuUpdateStockReq{Items: stockItems}); err != nil {
-			p.logger.Error("退还库存失败", zap.Error(err), zap.Int64("orderId", order.ID))
 			return err
 		}
 	}
@@ -615,7 +613,7 @@ func (p *RefundOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandl
 		if order.RefundPrice+refundAmount >= order.PayPrice {
 			updateData["status"] = tradeModel.TradeOrderStatusCanceled
 			updateData["cancel_time"] = now
-			updateData["cancel_type"] = tradeModel.OrderCancelTypeSystem
+			updateData["cancel_type"] = tradeModel.TradeOrderCancelTypeAfterSaleClose
 		}
 
 		_, err := tx.TradeOrder.WithContext(ctx).
@@ -643,7 +641,7 @@ func (p *RefundOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandl
 		order.Status = tradeModel.TradeOrderStatusCanceled
 		cancelTime := time.Now()
 		order.CancelTime = &cancelTime
-		order.CancelType = tradeModel.OrderCancelTypeSystem
+		order.CancelType = tradeModel.TradeOrderCancelTypeAfterSaleClose
 	}
 
 	// 5. 记录操作成功日志

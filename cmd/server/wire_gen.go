@@ -153,7 +153,11 @@ func InitApp() (*gin.Engine, error) {
 	brokerageRecordService := brokerage.NewBrokerageRecordService(query, zapLogger, tradeConfigService, productSpuService, productSkuService)
 	brokerageUserService := brokerage.NewBrokerageUserService(query, zapLogger, memberUserService, tradeConfigService)
 	brokerageRecordUnfreezeJob := job4.NewBrokerageRecordUnfreezeJob(brokerageRecordService, brokerageUserService)
-	v2 := ProvideJobHandlers(payTransferSyncJob, payNotifyJob, payOrderSyncJob, payOrderExpireJob, payRefundSyncJob, couponExpireJob, jobLogCleanJob, errorLogCleanJob, accessLogCleanJob, tradeOrderAutoCancelJob, tradeOrderAutoReceiveJob, tradeOrderAutoCommentJob, brokerageRecordUnfreezeJob)
+	combinationActivityService := promotion.NewCombinationActivityService(query, productSpuService, productSkuService)
+	socialClientService := system.NewSocialClientService(query)
+	combinationRecordService := promotion.NewCombinationRecordService(query, combinationActivityService, memberUserService, productSpuService, productSkuService, tradeOrderUpdateService, socialClientService)
+	combinationRecordExpireJob := job2.NewCombinationRecordExpireJob(combinationRecordService)
+	v2 := ProvideJobHandlers(payTransferSyncJob, payNotifyJob, payOrderSyncJob, payOrderExpireJob, payRefundSyncJob, couponExpireJob, jobLogCleanJob, errorLogCleanJob, accessLogCleanJob, tradeOrderAutoCancelJob, tradeOrderAutoReceiveJob, tradeOrderAutoCommentJob, brokerageRecordUnfreezeJob, combinationRecordExpireJob)
 	scheduler, err := infra2.NewScheduler(query, zapLogger, v2)
 	if err != nil {
 		return nil, err
@@ -235,9 +239,6 @@ func InitApp() (*gin.Engine, error) {
 	bargainActivityHandler := promotion2.NewBargainActivityHandler(bargainActivityService, bargainRecordService, bargainHelpService, productSpuService)
 	bargainHelpHandler := promotion2.NewBargainHelpHandler(bargainHelpService, memberUserService)
 	bargainRecordHandler := promotion2.NewBargainRecordHandler(bargainRecordService, bargainActivityService, memberUserService)
-	combinationActivityService := promotion.NewCombinationActivityService(query, productSpuService, productSkuService)
-	socialClientService := system.NewSocialClientService(query)
-	combinationRecordService := promotion.NewCombinationRecordService(query, combinationActivityService, memberUserService, productSpuService, productSkuService, tradeOrderUpdateService, socialClientService)
 	combinationActivityHandler := promotion2.NewCombinationActivityHandler(combinationActivityService, combinationRecordService, productSpuService)
 	combinationRecordHandler := promotion2.NewCombinationRecordHandler(combinationRecordService, combinationActivityService)
 	couponHandler := promotion2.NewCouponHandler(couponService)
@@ -379,6 +380,7 @@ func InitApp() (*gin.Engine, error) {
 		Statistics: statisticsHandlers,
 		System:     systemHandlers,
 	}
+	supportHandler := app.NewSupportHandler(fileService, dictService, deliveryExpressService, deliveryPickUpStoreService, tradeAfterSaleService, afterSaleLogService)
 	appProductBrowseHistoryHandler := product4.NewAppProductBrowseHistoryHandler(productBrowseHistoryService)
 	appCategoryHandler := product4.NewAppCategoryHandler(productCategoryService)
 	appProductCommentHandler := product4.NewAppProductCommentHandler(productCommentService)
@@ -407,9 +409,9 @@ func InitApp() (*gin.Engine, error) {
 	appCartHandler := trade4.NewAppCartHandler(cartService)
 	appTradeConfigHandler := trade4.NewAppTradeConfigHandler(tradeConfigService)
 	appTradeOrderHandler := trade4.NewAppTradeOrderHandler(tradeOrderUpdateService, tradeOrderQueryService, tradeAfterSaleService, tradePriceService)
-	appBrokerageRecordHandler := brokerage3.NewAppBrokerageRecordHandler(brokerageRecordService)
+	appBrokerageRecordHandler := brokerage3.NewAppBrokerageRecordHandler(brokerageRecordService, dictService)
 	appBrokerageUserHandler := brokerage3.NewAppBrokerageUserHandler(brokerageUserService, brokerageRecordService, brokerageWithdrawService, memberUserService)
-	appBrokerageWithdrawHandler := brokerage3.NewAppBrokerageWithdrawHandler(brokerageWithdrawService, payTransferService)
+	appBrokerageWithdrawHandler := brokerage3.NewAppBrokerageWithdrawHandler(brokerageWithdrawService, payTransferService, dictService)
 	handlers4 := brokerage3.NewHandlers(appBrokerageRecordHandler, appBrokerageUserHandler, appBrokerageWithdrawHandler)
 	handlers5 := trade4.NewHandlers(appTradeAfterSaleHandler, appCartHandler, appTradeConfigHandler, appTradeOrderHandler, handlers4)
 	handlers6 := mall2.NewHandlers(handlers2, handlers3, handlers5)
@@ -432,10 +434,11 @@ func InitApp() (*gin.Engine, error) {
 	appTenantHandler := system3.NewAppTenantHandler(tenantService)
 	handlers9 := system3.NewHandlers(appTenantHandler)
 	appHandlers := &app.AppHandlers{
-		Mall:   handlers6,
-		Member: handlers7,
-		Pay:    handlers8,
-		System: handlers9,
+		Support: supportHandler,
+		Mall:    handlers6,
+		Member:  handlers7,
+		Pay:     handlers8,
+		System:  handlers9,
 	}
 	enforcer, err := permission.InitEnforcer(db)
 	if err != nil {
@@ -490,6 +493,7 @@ func ProvideJobHandlers(
 	h11 *job4.TradeOrderAutoReceiveJob,
 	h12 *job4.TradeOrderAutoCommentJob,
 	h13 *job4.BrokerageRecordUnfreezeJob,
+	h14 *job2.CombinationRecordExpireJob,
 ) []infra2.JobHandler {
-	return []infra2.JobHandler{h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13}
+	return []infra2.JobHandler{h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14}
 }

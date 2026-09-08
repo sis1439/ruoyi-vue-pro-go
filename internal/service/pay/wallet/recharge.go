@@ -107,7 +107,7 @@ func (s *PayWalletRechargeService) UpdateWalletRechargerPaid(ctx context.Context
 	if err != nil || payOrder == nil {
 		return stdErrors.New("支付订单不存在")
 	}
-	if payOrder.Status != paySvc.PayOrderStatusSuccess {
+	if payOrder.Status != consts.PayOrderStatusSuccess {
 		return stdErrors.New("支付订单未支付")
 	}
 

@@ -1,6 +1,6 @@
 package member
 
-import "time"
+import "github.com/wxlbd/ruoyi-mall-go/pkg/types"
 
 // AppAuthLoginReq 手机+密码登录
 type AppAuthLoginReq struct {
@@ -51,11 +51,11 @@ type AppAuthWeixinMiniAppLoginReq struct {
 
 // AppAuthLoginResp 登录响应
 type AppAuthLoginResp struct {
-	UserID       int64     `json:"userId"`
-	AccessToken  string    `json:"accessToken"`
-	RefreshToken string    `json:"refreshToken"`
-	ExpiresTime  time.Time `json:"expiresTime"`
-	OpenID       string    `json:"openid"`
+	UserID       int64              `json:"userId"`
+	AccessToken  string             `json:"accessToken"`
+	RefreshToken string             `json:"refreshToken"`
+	ExpiresTime  types.JsonDateTime `json:"expiresTime"`
+	OpenID       string             `json:"openid"`
 }
 
 // AppAuthWeixinJsapiSignatureResp 微信 JSAPI 签名响应

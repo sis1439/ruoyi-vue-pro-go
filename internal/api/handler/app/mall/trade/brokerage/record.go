@@ -1,6 +1,9 @@
 package brokerage
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/internal/consts"
+	"github.com/wxlbd/ruoyi-mall-go/internal/service/system"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	"github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/trade"
@@ -17,10 +20,11 @@ import (
 
 type AppBrokerageRecordHandler struct {
 	recordSvc *brokerageSvc.BrokerageRecordService
+	dictSvc   *system.DictService
 }
 
-func NewAppBrokerageRecordHandler(recordSvc *brokerageSvc.BrokerageRecordService) *AppBrokerageRecordHandler {
-	return &AppBrokerageRecordHandler{recordSvc: recordSvc}
+func NewAppBrokerageRecordHandler(recordSvc *brokerageSvc.BrokerageRecordService, dictSvc *system.DictService) *AppBrokerageRecordHandler {
+	return &AppBrokerageRecordHandler{recordSvc: recordSvc, dictSvc: dictSvc}
 }
 
 // GetBrokerageRecordPage 获得分销记录分页
@@ -47,6 +51,11 @@ func (h *AppBrokerageRecordHandler) GetBrokerageRecordPage(c *gin.Context) {
 		return
 	}
 
+	labels, err := loadBrokerageLabels(c, h.dictSvc)
+	if err != nil {
+		response.WriteBizError(c, err)
+		return
+	}
 	writeResp := pagination.PageResult[*tradeReq.AppBrokerageRecordRespVO]{
 		Total: pageResult.Total,
 		List: lo.Map(pageResult.List, func(item *brokerage.BrokerageRecord, _ int) *tradeReq.AppBrokerageRecordRespVO {
@@ -60,8 +69,8 @@ func (h *AppBrokerageRecordHandler) GetBrokerageRecordPage(c *gin.Context) {
 				Description: item.Description,
 				Status:      item.Status,
 				Total:       item.TotalPrice,
-				CreateTime:  item.CreateTime,
-				// StatusName: item.Status // TODO: Dict lookup
+				CreateTime:  types.ToJsonDateTime(item.CreateTime),
+				StatusName:  labels.label("brokerage_record_status", item.Status, consts.BrokerageRecordStatusName(item.Status)),
 			}
 		}),
 	}
@@ -94,5 +103,11 @@ func resolveCreateTimeQuery(c *gin.Context, createTime []string) []string {
 	if len(createTime) == 2 {
 		return createTime
 	}
-	return c.QueryArray("createTime[]")
+	if values := c.QueryArray("createTime[]"); len(values) == 2 {
+		return values
+	}
+	if start, end := c.Query("createTime[0]"), c.Query("createTime[1]"); start != "" && end != "" {
+		return []string{start, end}
+	}
+	return nil
 }

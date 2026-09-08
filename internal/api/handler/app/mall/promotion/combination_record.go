@@ -1,6 +1,7 @@
 package promotion
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"strconv"
 
 	promotion2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/mall/promotion"
@@ -49,7 +50,7 @@ func (h *AppCombinationRecordHandler) GetHeadCombinationRecordList(c *gin.Contex
 			ActivityID:       item.ActivityID,
 			Nickname:         item.Nickname,
 			Avatar:           item.Avatar,
-			ExpireTime:       &item.ExpireTime,
+			ExpireTime:       types.ToJsonDateTimePtr(&item.ExpireTime),
 			UserSize:         item.UserSize,
 			UserCount:        item.UserCount,
 			Status:           item.Status,

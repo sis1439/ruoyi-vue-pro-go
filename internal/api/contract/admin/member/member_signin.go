@@ -1,6 +1,7 @@
 package member
 
 import (
+	"github.com/wxlbd/ruoyi-mall-go/pkg/types"
 	"time"
 
 	"github.com/wxlbd/ruoyi-mall-go/pkg/pagination"
@@ -43,11 +44,11 @@ type MemberSignInRecordResp struct {
 
 // AppMemberSignInRecordResp App签到记录响应
 type AppMemberSignInRecordResp struct {
-	ID         int64     `json:"id"`
-	Day        int       `json:"day"`
-	Point      int       `json:"point"`
-	Experience int       `json:"experience"`
-	CreateTime time.Time `json:"createTime"`
+	ID         int64              `json:"id"`
+	Day        int                `json:"day"`
+	Point      int                `json:"point"`
+	Experience int                `json:"experience"`
+	CreateTime types.JsonDateTime `json:"createTime"`
 }
 
 // AppMemberSignInRecordSummaryResp App签到统计响应

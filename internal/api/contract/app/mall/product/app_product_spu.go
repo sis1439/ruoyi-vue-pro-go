@@ -6,6 +6,8 @@ import (
 
 // AppProductSpuPageReq 商品 SPU 分页 Request VO
 type AppProductSpuPageReq struct {
+	CategoryIDs []int64 `form:"categoryIds" collection_format:"csv"`
+	IDs         []int64 `form:"ids" collection_format:"csv"`
 	pagination.PageParam
 	// 分类编号
 	CategoryID *int64 `form:"categoryId"`

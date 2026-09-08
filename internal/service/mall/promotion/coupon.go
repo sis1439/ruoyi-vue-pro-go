@@ -346,7 +346,7 @@ func (s *CouponService) GetCouponPage(ctx context.Context, req *promotion3.Coupo
 			DiscountType:       coupon.DiscountType,
 			DiscountPercent:    &coupon.DiscountPercent,
 			DiscountPrice:      &coupon.DiscountPrice,
-			DiscountLimitPrice: &coupon.DiscountLimitPrice,
+			DiscountLimitPrice: coupon.DiscountLimitPrice,
 
 			// BaseVO 字段 - 使用情况
 			UseOrderID: &coupon.UseOrderID,
@@ -430,7 +430,7 @@ func (s *CouponService) TakeCouponByAdmin(ctx context.Context, templateId int64,
 			DiscountType:       template.DiscountType,
 			DiscountPrice:      template.DiscountPrice,
 			DiscountPercent:    template.DiscountPercent,
-			DiscountLimitPrice: template.DiscountLimitPrice,
+			DiscountLimitPrice: &template.DiscountLimitPrice,
 		}
 		coupons = append(coupons, coupon)
 	}
