@@ -4,6 +4,7 @@
 
 - [固定版本](baseline.md) / [实际环境](environment.md)
 - [缺陷复核与失败证据](audit-findings.md) / [技术决策](decisions.md)
+- [2026-09-08 审查三项问题修复与复验](review-fixes.md)
 - [接口清单](api-compatibility.csv) / [契约](contracts/wire-contract.md)
 - [数据库基线](data-baseline.md) / [映射清单](schema-manifest.yaml) / [数据库验证](database-verification.md)
 - [本地交易事务](t04-transactions.md) / [认证及租户边界](t09-t10-security-boundaries.md)
@@ -19,6 +20,7 @@
 | T02/T03 PG迁移、类型和查询 | 8185d1f |
 | T04 下单及商品事务 | 49150f0 |
 | T09/T10 认证、租户、权限、缓存/文件/任务 | b258005 |
+| 审查 F1/F2/F3：任务生命周期与租户管理资料隔离 | 59e857e |
 
 这些提交存在明确依赖，验收对象为完整分支，勿只挑选单个任务提交当作可独立部署版本。最终证据与汇总另有docs提交；工作流报告中的“该工作流未提交/父任务待整合”属于当时记录，以这里和最终验收报告为准。
 

@@ -2,7 +2,7 @@
 
 ## 交付位置
 
-Go修改位于 `/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go`，分支`codex/batch-ab`。原 `/Users/macmini/Desktop/ruoyi-vue-pro-go` 保留原状。前端构建副本、固定提交和可应用补丁见frontend-build.md及frontend-admin-build.md；不要把生成的dist放入后端源码。
+Go修改位于 `/Users/macmini/Desktop/yudao-mall-uniapp/.work/ruoyi-vue-pro-go`，分支`codex/batch-ab`。本批次未向原 `/Users/macmini/Desktop/ruoyi-vue-pro-go` 写入修复；2026-09-08收尾时原目录已有其他未提交改动，后续整合需保留这些内容。前端构建副本、固定提交和可应用补丁见frontend-build.md及frontend-admin-build.md；不要把生成的dist放入后端源码。
 
 ## 生成、构建、检查
 
@@ -42,7 +42,7 @@ rtk python3 -m unittest discover -s docs/batch-ab/contracts/tests
 rtk node docs/batch-ab/contracts/tests/frontend-contracts.cjs
 ```
 
-HTTP smoke创建独立schema、随机临时管理员，启动完整服务，验证登录/权限/商品/地址/购物车/租户拒绝/刷新/登出，并检查服务日志没有口令或令牌。其测试配置只监听本机58091；运行前保证该端口空闲。
+HTTP smoke创建独立schema、随机临时管理员，启动完整服务，验证登录/权限/商品/地址/购物车/租户拒绝/刷新/登出，并检查服务日志没有口令或令牌。新增租户详情/分页/Excel导出和任务创建/更新/停用/恢复/删除/同步验证；暂停临时schema中的种子任务，测试任务只使用未来调度时间。其测试配置只监听本机58091；运行前保证该端口空闲。
 
 ```sh
 rtk proxy mkdir -p tmp/batch-ab
@@ -56,6 +56,7 @@ rtk python3 scripts/batch_ab_smoke.py
 
 ## 排障与停止
 
+- 任务接口报告“已保存，调度同步失败”时，数据库目标状态已经提交；错误包含任务ID。刷新列表确认状态，恢复调度器后用当前租户管理员调用`POST /admin-api/infra/job/sync`重试。同步包括停用和软删除记录，可清除失败残留的定时器，重复同步不会增加定时器。不要重复创建同一处理器。当前实现适用单进程调度，不能据此宣称已支持多实例选主或强制终止正在运行的处理器。
 - 启动失败先检查密钥、数据库driver/DSN、迁移版本、Redis及域名映射；不得临时关闭认证/租户检查。
 - 发现迁移dirty时保留数据库和错误日志，定位失败SQL后按备份恢复或经审核的前向修复处理。禁止盲目force版本后当作成功。
 - 登录/验证码遇到503需恢复Redis；429需等待Retry-After。不要转为无白名单登录。
