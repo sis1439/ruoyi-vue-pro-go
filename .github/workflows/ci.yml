@@ -54,7 +54,7 @@ jobs:
           --health-cmd "redis-cli ping" --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/yudao_mall_test?sslmode=disable
+      TEST_POSTGRES_DSN: host=localhost port=5432 user=postgres password=postgres dbname=yudao_mall_test sslmode=disable
       T09_REDIS_ADDR: localhost:6379
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +63,8 @@ jobs:
           go-version: '1.26.6'
           cache: true
       - run: make gen
+      - name: Install Redis for process outage test
+        run: sudo apt-get update && sudo apt-get install -y redis-server
       - run: make test-integration
       - uses: actions/upload-artifact@v4
         if: always()

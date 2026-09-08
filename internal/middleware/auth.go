@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
@@ -108,7 +110,20 @@ func obtainAuthorization(c *gin.Context) string {
 	}
 
 	// 3. 最后从 Form Parameter 获取
-	token = c.PostForm("Authorization")
+	// Preserve URL-encoded callback bytes for downstream signature checks.
+	// Do not buffer multipart uploads; ParseMultipartForm may stream them to disk.
+	if strings.EqualFold(c.ContentType(), "application/x-www-form-urlencoded") && c.Request.Body != nil && c.Request.PostForm == nil {
+		original := c.Request.Body
+		var consumed bytes.Buffer
+		c.Request.Body = io.NopCloser(io.TeeReader(original, &consumed))
+		token = c.PostForm("Authorization")
+		c.Request.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(&consumed, original), original}
+	} else {
+		token = c.PostForm("Authorization")
+	}
 	if token != "" {
 		// Remove Bearer prefix if present
 		if len(token) > 7 && strings.ToUpper(token[0:7]) == "BEARER " {

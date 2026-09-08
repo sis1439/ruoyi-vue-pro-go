@@ -161,7 +161,7 @@ func TestSecurityActualRedisServerOutage(t *testing.T) {
 	if err != nil {
 		t.Skip("redis-server executable required")
 	}
-	dir, err := os.MkdirTemp("/private/tmp", "t09-redis-")
+	dir, err := os.MkdirTemp("", "t09-redis-")
 	if err != nil {
 		t.Fatal(err)
 	}
