@@ -4,7 +4,7 @@ import "testing"
 
 func base() *Config {
 	c := &Config{}
- c.Security.JWTSecret = "cd-test-8b2d6e41a079c3f5e8d2946a01bf"
+	c.Security.JWTSecret = "cd-test-8b2d6e41a079c3f5e8d2946a01bf"
 	c.App.Env = "local"
 	c.Database.DSN = "x"
 	c.Redis.Addr = "127.0.0.1:6379"
@@ -20,7 +20,7 @@ func TestValidateRejectsMissingConfig(t *testing.T) {
 	}
 
 	cases := map[string]func(*Config){
-		"database.dsn":             func(c *Config) { c.Database.DSN = "" },
+		"database.dsn":          func(c *Config) { c.Database.DSN = "" },
 		"redis.addr":            func(c *Config) { c.Redis.Addr = "" },
 		"pay.order_notify_url":  func(c *Config) { c.Pay.OrderNotifyURL = "" },
 		"pay.refund_notify_url": func(c *Config) { c.Pay.RefundNotifyURL = "" },
@@ -42,8 +42,9 @@ func TestValidateRejectsWeakProdConfig(t *testing.T) {
 		t.Fatal("prod 环境缺少 jwt_secret 且回调为 http 时应拒绝启动")
 	}
 
-	c.App.JWTSecret = "a-real-secret"
-	c.Pay.NotifyToken = "a-real-notify-token"
+	c.Security.JWTSecret = "cd-test-8b2d6e41a079c3f5e8d2946a01bf"
+	c.Pay.NotifyToken = "cd-notify-491aef6350db7c2690e5fb864ac"
+	c.Pay.TrustedNotifyURLs = []string{"https://mall.example.com/admin-api/trade/order/update-paid"}
 	c.Pay.OrderNotifyURL = "https://api.example.com/pay/notify/order"
 	c.Pay.RefundNotifyURL = "https://api.example.com/pay/notify/refund"
 	if err := c.Validate(); err != nil {

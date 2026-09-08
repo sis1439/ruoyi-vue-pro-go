@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -63,8 +64,6 @@ type MQTTClientConfig struct {
 type AppConfig struct {
 	Name string `mapstructure:"name"`
 	Env  string `mapstructure:"env"`
-	// JWTSecret 认证签名密钥。非 local 环境必须显式配置，不得使用内置默认值。
-	JWTSecret string `mapstructure:"jwt_secret"`
 }
 
 // IsProdLike 非本地环境（含 dev/test/staging/prod）适用更严格的配置校验
@@ -147,7 +146,8 @@ type PayConfig struct {
 	// 商城侧的 /trade/order/update-paid 等回调是公开路由，
 	// 除了重新查询可信支付记录外，再用它建立内部调用的信任边界。
 	// 非 local 环境必须配置。
-	NotifyToken string `mapstructure:"notify_token"`
+	NotifyToken       string   `mapstructure:"notify_token"`
+	TrustedNotifyURLs []string `mapstructure:"trusted_notify_urls"`
 }
 
 func Load() error {
@@ -189,7 +189,9 @@ func Load() error {
 // 不用默认值假装成功——用默认值启动会在支付回调、认证等路径静默失败。
 func (c *Config) Validate() error {
 	var problems []string
-	if err := c.Security.Validate(); err != nil { problems = append(problems, err.Error()) }
+	if err := c.Security.Validate(); err != nil {
+		problems = append(problems, err.Error())
+	}
 
 	if c.Database.DSN == "" {
 		problems = append(problems, "database.dsn 未配置：数据库无法连接")
@@ -206,17 +208,21 @@ func (c *Config) Validate() error {
 		problems = append(problems, "pay.refund_notify_url 未配置：退款渠道回调地址无法拼接")
 	}
 
-	if c.App.IsProdLike() {
-		if c.Security.JWTSecret == "" {
-			problems = append(problems, "app.jwt_secret 未配置：非 local 环境不允许使用内置默认密钥")
+	if c.Pay.NotifyToken != "" || c.App.IsProdLike() {
+		if err := (SecurityConfig{JWTSecret: c.Pay.NotifyToken}).Validate(); err != nil {
+			problems = append(problems, "pay.notify_token must be an independent strong secret of at least 32 bytes")
 		}
-		if c.Pay.NotifyToken == "" {
-			problems = append(problems, "pay.notify_token 未配置：支付中心到商城的业务通知缺少信任边界")
+		if c.Pay.NotifyToken == c.Security.JWTSecret {
+			problems = append(problems, "JWT and payment notification secrets must differ")
 		}
-		for _, u := range []string{c.Pay.OrderNotifyURL, c.Pay.RefundNotifyURL} {
-			if strings.HasPrefix(u, "http://") {
-				problems = append(problems, "支付回调地址必须使用 https: "+u)
-			}
+		if len(c.Pay.TrustedNotifyURLs) == 0 {
+			problems = append(problems, "pay.trusted_notify_urls must list exact business callback URLs")
+		}
+	}
+	for _, raw := range append([]string{c.Pay.OrderNotifyURL, c.Pay.RefundNotifyURL}, c.Pay.TrustedNotifyURLs...) {
+		u, err := url.Parse(raw)
+		if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "http" && u.Scheme != "https") || (c.App.IsProdLike() && u.Scheme != "https") {
+			problems = append(problems, "invalid payment callback URL")
 		}
 	}
 
@@ -224,4 +230,18 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("配置校验失败 (env=%s):\n  - %s", c.App.Env, strings.Join(problems, "\n  - "))
 	}
 	return nil
+}
+
+// IsTrustedNotifyURL binds the internal credential to explicitly configured endpoints.
+func (c PayConfig) IsTrustedNotifyURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.Fragment != "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	for _, allowed := range c.TrustedNotifyURLs {
+		if raw == allowed {
+			return true
+		}
+	}
+	return false
 }

@@ -7,7 +7,7 @@
 - 芋道商城 Go 后端，使用 Gin、GORM Gen、Wire、Redis；模块名为 `github.com/wxlbd/ruoyi-mall-go`，版本以 `go.mod` 为准。
 - 入口：`cmd/server/main.go`；装配：`cmd/server/wire.go`；接口：`internal/api/`；业务：`internal/service/`；数据访问：`internal/repo/`；实体：`internal/model/`。
 - 请求 / 响应放在 `internal/api/contract/`，复用 `pkg/response/`、`pkg/errors/`、`pkg/types/` 和 `internal/consts/`。沿用现有 Service / Query 模式，不新增仅透传的分层。
-- 当前应用使用 MySQL。旧文档和隔离副本的实现、测试结果不代表当前检出状态，以源码和实际验证为准。
+- 当前分支已整合 A/B，运行数据库为 PostgreSQL 16.10，使用版本化 migrations；以源码和实际验证为准。
 
 ## 常用命令
 
@@ -41,7 +41,7 @@ rtk proxy make vet
 
 - 保留已有修改和未跟踪文件；只格式化改动文件，不夹带生成产物、本地配置或真实凭证。
 - 先运行受影响包 / 用例；共享接口或装配变更再扩大检查，并发修改按需使用 `-race`。纯文档只核对内容、路径与差异，无需构建或启动服务。
-- 现有测试使用 `testing` / `testify`。`make test-integration` 当前未配套 integration tag 测试，命令成功不等于真实数据库验证通过；实现变化后更新此条。
+- 现有测试使用 `testing` / `testify`。`make test-integration` 必须设置 `TEST_POSTGRES_DSN`、`T09_REDIS_ADDR`，执行真实依赖与 race 测试；检查器拒绝跳过、失败或缺少关键用例。
 - 事务、租户、并发与 Redis 行为用隔离真实依赖验证最终数据；缺少渠道凭证时继续本地测试，单列真实联调未覆盖项。真实交易或生产操作须有相应授权。
 - 交付前检查 `rtk git diff --check` 及新增文件，说明实际验证范围、结果和限制；未运行、跳过及其他副本的结果不算通过。
 

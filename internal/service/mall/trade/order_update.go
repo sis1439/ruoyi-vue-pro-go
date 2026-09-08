@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -1414,10 +1414,6 @@ func (s *TradeOrderUpdateService) cancelUnpaidOrder(ctx context.Context, userId,
 		}
 		// 未更新到行说明订单状态已被并发的支付回调改变，
 		// 此时绝不能继续执行库存/优惠券恢复，否则会出现"已付款却已释放库存"
-		if info.RowsAffected == 0 {
-			return pkgErrors.NewBizError(1004001002, "订单状态已变更，取消未生效")
-		}
-
 		if info.RowsAffected != 1 {
 			return pkgErrors.NewBizError(1004001002, "订单状态已变更")
 		}

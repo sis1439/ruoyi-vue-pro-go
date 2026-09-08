@@ -6,6 +6,7 @@ import (
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 	"github.com/wxlbd/ruoyi-mall-go/internal/testutil"
+	"github.com/wxlbd/ruoyi-mall-go/pkg/config"
 	pkgcontext "github.com/wxlbd/ruoyi-mall-go/pkg/context"
 	"github.com/wxlbd/ruoyi-mall-go/pkg/database"
 	"go.uber.org/zap"
@@ -17,7 +18,7 @@ import (
 	"time"
 )
 
-// Tests lifetime/tenant isolation only; the legacy merchant payload/protocol remains batch C.
+// Real Redis lock, tenant lifetime, durable state and JSON acknowledgement.
 func TestNotifyJobWaitsForTenantWork(t *testing.T) {
 	addr := os.Getenv("T09_REDIS_ADDR")
 	if addr == "" {
@@ -33,9 +34,12 @@ func TestNotifyJobWaitsForTenantWork(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(15 * time.Millisecond)
 		delivered.Add(1)
-		_, _ = w.Write([]byte("SUCCESS"))
+		_, _ = w.Write([]byte(`{"code":0}`))
 	}))
 	defer server.Close()
+	old := config.C
+	config.C = &config.Config{Pay: config.PayConfig{TrustedNotifyURLs: []string{server.URL}}}
+	t.Cleanup(func() { config.C = old })
 	a := pkgcontext.WithTenant(context.Background(), time.Now().UnixNano())
 	b := pkgcontext.WithTenant(context.Background(), 2)
 	now := time.Now().Add(-time.Second)

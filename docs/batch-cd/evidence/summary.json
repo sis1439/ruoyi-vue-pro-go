@@ -1,0 +1,110 @@
+{
+  "repository": "/Users/macmini/Desktop/ruoyi-vue-pro-go",
+  "branch": "codex/batch-cd",
+  "base": "6548c9e",
+  "migration_commit": "49f1111",
+  "toolchain": "go1.26.6 darwin/arm64",
+  "postgres": "16.10",
+  "redis": "8.2.1",
+  "top_level_passed": 131,
+  "all_test_cases_passed": 352,
+  "failed": 0,
+  "skipped_tests": 0,
+  "tested_packages": 32,
+  "no_test_packages": 74,
+  "checks": [
+    {
+      "check": "toolchain",
+      "command": [
+        "go",
+        "version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.04
+    },
+    {
+      "check": "generate",
+      "command": [
+        "make",
+        "gen"
+      ],
+      "exit_code": 0,
+      "seconds": 8.12
+    },
+    {
+      "check": "wire",
+      "command": [
+        "make",
+        "wire"
+      ],
+      "exit_code": 0,
+      "seconds": 6.89
+    },
+    {
+      "check": "modules",
+      "command": [
+        "go",
+        "mod",
+        "verify"
+      ],
+      "exit_code": 0,
+      "seconds": 3.01
+    },
+    {
+      "check": "build",
+      "command": [
+        "go",
+        "build",
+        "./..."
+      ],
+      "exit_code": 0,
+      "seconds": 8.61
+    },
+    {
+      "check": "vet",
+      "command": [
+        "go",
+        "vet",
+        "./..."
+      ],
+      "exit_code": 0,
+      "seconds": 4.59
+    },
+    {
+      "check": "tests",
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-json",
+        "./..."
+      ],
+      "exit_code": 0,
+      "seconds": 57.29
+    },
+    {
+      "check": "integration-check",
+      "command": [
+        "go",
+        "run",
+        "./scripts/check-integration",
+        "/private/tmp/ruoyi-cd-final-evidence/tests.log"
+      ],
+      "exit_code": 0,
+      "seconds": 0.28
+    }
+  ],
+  "real_external_payment_or_message": false,
+  "remote_push": false,
+  "vulnerability_scan": {
+    "tool": "govulncheck v1.1.4",
+    "exit_code": 0,
+    "reachable_vulnerabilities": 0,
+    "imported_package_vulnerabilities_not_called": 1,
+    "required_module_vulnerabilities_not_called": 14,
+    "official_database_responses": 273,
+    "source": "https://vuln.go.dev",
+    "retry_script": "vulnerability-fetch-retry.py"
+  }
+}

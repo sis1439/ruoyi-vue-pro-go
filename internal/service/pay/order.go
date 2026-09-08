@@ -319,7 +319,7 @@ func (s *PayOrderService) GetOrderExtension(ctx context.Context, id int64) (*pay
 func (s *PayOrderService) ExpireOrder(ctx context.Context) (int64, error) {
 	var expiredCount int64
 
-	err := s.q.Transaction(func(tx *query.Query) error {
+	err := repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		now := time.Now()
 
 		// 1. 查询所有待支付且已过期的订单
@@ -426,7 +426,9 @@ func (s *PayOrderService) syncOrder(ctx context.Context, orderExtension *pay.Pay
 	}
 
 	// 1.2 回调支付结果
-	s.NotifyOrder(ctx, orderExtension.ChannelID, respDTO)
+	if err := s.NotifyOrder(ctx, orderExtension.ChannelID, respDTO); err != nil {
+		return false
+	}
 
 	// 2. 如果是已支付,则返回 true
 	return respDTO.Status == PayOrderStatusSuccess
@@ -435,14 +437,17 @@ func (s *PayOrderService) syncOrder(ctx context.Context, orderExtension *pay.Pay
 // NotifyOrder 通知并更新订单的支付结果（已包装事务）
 // 对齐 Java: @Transactional 的 PayOrderService.notifyOrder(Long channelId, PayOrderRespDTO notify)
 func (s *PayOrderService) NotifyOrder(ctx context.Context, channelID int64, notify *client.OrderResp) error {
+	if notify == nil || notify.OutTradeNo == "" {
+		return fmt.Errorf("支付通知缺少订单号")
+	}
 	// 校验支付渠道是否有效
-	channel, err := s.channelSvc.GetChannel(ctx, channelID)
+	channel, err := s.channelSvc.ValidPayChannel(ctx, channelID)
 	if err != nil {
 		return err
 	}
 
 	// 使用 GORM 事务包装（对齐 Java @Transactional）
-	return s.q.Transaction(func(tx *query.Query) error {
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
 		switch notify.Status {
 		case PayOrderStatusSuccess:
 			// 情况一: 支付成功的回调
@@ -477,9 +482,7 @@ func (s *PayOrderService) notifyOrderSuccessTx(ctx context.Context, tx *query.Qu
 	}
 
 	// 3. 插入支付通知记录
-	s.notifySvc.CreatePayNotifyTask(ctx, PayNotifyTypeOrder, orderExtension.OrderID)
-
-	return nil
+	return s.notifySvc.CreatePayNotifyTask(ctx, PayNotifyTypeOrder, orderExtension.OrderID)
 }
 
 // updateOrderExtensionSuccessTx 在事务内更新 PayOrderExtension 支付成功
@@ -530,6 +533,14 @@ func (s *PayOrderService) updateOrderSuccessTx(ctx context.Context, tx *query.Qu
 		return false, fmt.Errorf("支付订单不存在")
 	}
 
+	// 1.1 校验渠道实收金额与支付单金额一致，避免改价回调把订单置为已支付
+	if notify.Price <= 0 || notify.Price != order.Price {
+		return false, fmt.Errorf("支付金额不匹配: 渠道 %d, 订单 %d", notify.Price, order.Price)
+	}
+
+	if orderExtension.ChannelID != channel.ID || order.AppID != channel.AppID {
+		return false, fmt.Errorf("支付渠道或应用不匹配")
+	}
 	// 如果已经是成功，直接返回，不用重复更新
 	if order.Status == PayOrderStatusSuccess && order.ExtensionID == orderExtension.ID {
 		return true, nil
@@ -538,11 +549,6 @@ func (s *PayOrderService) updateOrderSuccessTx(ctx context.Context, tx *query.Qu
 	// 校验状态，必须是待支付
 	if order.Status != PayOrderStatusWaiting {
 		return false, fmt.Errorf("支付订单状态不是待支付")
-	}
-
-	// 1.1 校验渠道实收金额与支付单金额一致，避免改价回调把订单置为已支付
-	if notify.Price > 0 && notify.Price != order.Price {
-		return false, fmt.Errorf("支付金额不匹配: 渠道 %d, 订单 %d", notify.Price, order.Price)
 	}
 
 	// 2. 更新 PayOrder (使用乐观锁)
@@ -662,7 +668,8 @@ func (s *PayOrderService) UpdatePayOrderPrice(ctx context.Context, id int64, pay
 // UpdateOrderRefundPrice 更新订单退款金额
 // 对齐 Java: PayOrderService.updateOrderRefundPrice(Long id, Integer incrRefundPrice)
 func (s *PayOrderService) UpdateOrderRefundPrice(ctx context.Context, id int64, incrRefundPrice int) error {
-	order, err := s.q.PayOrder.WithContext(ctx).Where(s.q.PayOrder.ID.Eq(id)).First()
+	q := repo.QueryFromContext(ctx, s.q)
+	order, err := q.PayOrder.WithContext(ctx).Where(q.PayOrder.ID.Eq(id)).First()
 	if err != nil {
 		return fmt.Errorf("支付订单不存在")
 	}
@@ -673,13 +680,13 @@ func (s *PayOrderService) UpdateOrderRefundPrice(ctx context.Context, id int64, 
 	}
 
 	// 校验退款金额不能超过支付金额
-	if order.RefundPrice+incrRefundPrice > order.Price {
+	if incrRefundPrice <= 0 || incrRefundPrice > order.Price-order.RefundPrice {
 		return fmt.Errorf("退款金额超过支付金额")
 	}
 
 	// 更新订单 (使用乐观锁)
-	result, err := s.q.PayOrder.WithContext(ctx).
-		Where(s.q.PayOrder.ID.Eq(id), s.q.PayOrder.Status.Eq(order.Status)).
+	result, err := q.PayOrder.WithContext(ctx).
+		Where(q.PayOrder.ID.Eq(id), q.PayOrder.Status.Eq(order.Status), q.PayOrder.RefundPrice.Eq(order.RefundPrice)).
 		Updates(map[string]interface{}{
 			"refund_price": order.RefundPrice + incrRefundPrice,
 			"status":       PayOrderStatusRefund,

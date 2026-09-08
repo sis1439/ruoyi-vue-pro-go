@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.4'   # 固定工具链版本，避免 CI 与本地结果漂移
+          go-version: '1.26.6'   # 固定工具链版本，避免 CI 与本地结果漂移
           cache: true
 
       - name: Generate DAO code
@@ -34,12 +34,12 @@ jobs:
           govulncheck ./...
 
   # 集成测试需要真实 PostgreSQL 与 Redis。
-  # 依赖版本固定；测试文件带 //go:build integration，尚未编写时该 job 为空跑。
+  # Executes real database, transaction, tenant and Redis tests; skips fail acceptance.
   integration:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:16.10
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: yudao_mall_test
@@ -48,19 +48,24 @@ jobs:
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
       redis:
-        image: redis:7
+        image: redis:8.2.1
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping" --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      TEST_PG_DSN: postgres://postgres:postgres@localhost:5432/yudao_mall_test?sslmode=disable
-      TEST_REDIS_ADDR: localhost:6379
+      TEST_POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/yudao_mall_test?sslmode=disable
+      T09_REDIS_ADDR: localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.4'
+          go-version: '1.26.6'
           cache: true
       - run: make gen
-      - run: go test -tags=integration ./... -count=1
+      - run: make test-integration
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-results
+          path: integration-results.jsonl

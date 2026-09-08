@@ -1,3 +1,5 @@
+> 历史 C/D 初次实现审计记录。当前分支的 review 修复状态及证据以 `docs/batch-cd/verification-report.md` 为准；原始版本保留在 `49f1111`。
+
 # audit-findings.md — 批次 C / D 复核与修复记录
 
 **基线 commit**：`4a240b8b15d54f77d439b631417d35630c27ad4a`

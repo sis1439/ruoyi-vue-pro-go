@@ -1,0 +1,83 @@
+[
+  {
+    "check": "toolchain",
+    "command": [
+      "go",
+      "version"
+    ],
+    "exit_code": 0,
+    "seconds": 0.04
+  },
+  {
+    "check": "generate",
+    "command": [
+      "make",
+      "gen"
+    ],
+    "exit_code": 0,
+    "seconds": 8.12
+  },
+  {
+    "check": "wire",
+    "command": [
+      "make",
+      "wire"
+    ],
+    "exit_code": 0,
+    "seconds": 6.89
+  },
+  {
+    "check": "modules",
+    "command": [
+      "go",
+      "mod",
+      "verify"
+    ],
+    "exit_code": 0,
+    "seconds": 3.01
+  },
+  {
+    "check": "build",
+    "command": [
+      "go",
+      "build",
+      "./..."
+    ],
+    "exit_code": 0,
+    "seconds": 8.61
+  },
+  {
+    "check": "vet",
+    "command": [
+      "go",
+      "vet",
+      "./..."
+    ],
+    "exit_code": 0,
+    "seconds": 4.59
+  },
+  {
+    "check": "tests",
+    "command": [
+      "go",
+      "test",
+      "-race",
+      "-count=1",
+      "-json",
+      "./..."
+    ],
+    "exit_code": 0,
+    "seconds": 57.29
+  },
+  {
+    "check": "integration-check",
+    "command": [
+      "go",
+      "run",
+      "./scripts/check-integration",
+      "/private/tmp/ruoyi-cd-final-evidence/tests.log"
+    ],
+    "exit_code": 0,
+    "seconds": 0.28
+  }
+]

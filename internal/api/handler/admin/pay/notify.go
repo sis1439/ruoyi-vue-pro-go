@@ -2,6 +2,9 @@ package pay
 
 import (
 	"io"
+	"net/http"
+	"net/url"
+	"strings"
 
 	pay2 "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	"github.com/wxlbd/ruoyi-mall-go/internal/model/pay"
@@ -57,17 +60,29 @@ func (h *PayNotifyHandler) NotifyOrder(c *gin.Context) {
 	// 1. 获取 PayClient
 	payClient, err := h.channelSvc.GetPayClient(c.Request.Context(), channelId)
 	if err != nil {
-		response.WriteBizError(c, err)
+		writeChannelNotifyFailure(c)
 		return
 	}
 	if payClient == nil {
 		h.logger.Error("[NotifyOrder] 渠道编号找不到对应的支付客户端", zap.Int64("channelId", channelId))
-		response.WriteBizError(c, errors.ErrParam)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	// 2. 解析回调数据
-	body, _ := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
+	if err != nil {
+		writeChannelNotifyFailure(c)
+		return
+	}
+	if strings.HasPrefix(c.ContentType(), "application/x-www-form-urlencoded") {
+		values, err := url.ParseQuery(string(body))
+		if err != nil {
+			writeChannelNotifyFailure(c)
+			return
+		}
+		c.Request.PostForm = values
+	}
 	notifyData := &client.NotifyData{
 		Params:  h.queryToMap(c),
 		Body:    string(body),
@@ -77,19 +92,19 @@ func (h *PayNotifyHandler) NotifyOrder(c *gin.Context) {
 	orderResp, err := payClient.ParseOrderNotify(notifyData)
 	if err != nil {
 		h.logger.Error("[NotifyOrder] 解析回调数据失败", zap.Error(err))
-		response.WriteBizError(c, errors.ErrParam)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	// 3. 处理回调
 	if err := h.orderSvc.NotifyOrder(c.Request.Context(), channelId, orderResp); err != nil {
 		h.logger.Error("[NotifyOrder] 处理回调失败", zap.Error(err))
-		response.WriteBizError(c, err)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	h.logger.Info("[NotifyOrder] 支付回调处理成功", zap.Int64("channelId", channelId))
-	c.String(200, "success")
+	c.String(http.StatusOK, "success")
 }
 
 // NotifyRefund 支付渠道的统一【退款】回调
@@ -102,17 +117,29 @@ func (h *PayNotifyHandler) NotifyRefund(c *gin.Context) {
 	// 1. 获取 PayClient
 	payClient, err := h.channelSvc.GetPayClient(c.Request.Context(), channelId)
 	if err != nil {
-		response.WriteBizError(c, err)
+		writeChannelNotifyFailure(c)
 		return
 	}
 	if payClient == nil {
 		h.logger.Error("[NotifyRefund] 渠道编号找不到对应的支付客户端", zap.Int64("channelId", channelId))
-		response.WriteBizError(c, errors.ErrParam)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	// 2. 解析回调数据
-	body, _ := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
+	if err != nil {
+		writeChannelNotifyFailure(c)
+		return
+	}
+	if strings.HasPrefix(c.ContentType(), "application/x-www-form-urlencoded") {
+		values, err := url.ParseQuery(string(body))
+		if err != nil {
+			writeChannelNotifyFailure(c)
+			return
+		}
+		c.Request.PostForm = values
+	}
 	notifyData := &client.NotifyData{
 		Params:  h.queryToMap(c),
 		Body:    string(body),
@@ -122,19 +149,19 @@ func (h *PayNotifyHandler) NotifyRefund(c *gin.Context) {
 	refundResp, err := payClient.ParseRefundNotify(notifyData)
 	if err != nil {
 		h.logger.Error("[NotifyRefund] 解析回调数据失败", zap.Error(err))
-		response.WriteBizError(c, errors.ErrParam)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	// 3. 处理回调
 	if err := h.refundSvc.NotifyRefund(c.Request.Context(), channelId, refundResp); err != nil {
 		h.logger.Error("[NotifyRefund] 处理回调失败", zap.Error(err))
-		response.WriteBizError(c, err)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	h.logger.Info("[NotifyRefund] 退款回调处理成功", zap.Int64("channelId", channelId))
-	c.String(200, "success")
+	c.String(http.StatusOK, "success")
 }
 
 // NotifyTransfer 支付渠道的统一【转账】回调
@@ -147,17 +174,29 @@ func (h *PayNotifyHandler) NotifyTransfer(c *gin.Context) {
 	// 1. 获取 PayClient
 	payClient, err := h.channelSvc.GetPayClient(c.Request.Context(), channelId)
 	if err != nil {
-		response.WriteBizError(c, err)
+		writeChannelNotifyFailure(c)
 		return
 	}
 	if payClient == nil {
 		h.logger.Error("[NotifyTransfer] 渠道编号找不到对应的支付客户端", zap.Int64("channelId", channelId))
-		response.WriteBizError(c, errors.ErrParam)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	// 2. 解析回调数据
-	body, _ := io.ReadAll(c.Request.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20))
+	if err != nil {
+		writeChannelNotifyFailure(c)
+		return
+	}
+	if strings.HasPrefix(c.ContentType(), "application/x-www-form-urlencoded") {
+		values, err := url.ParseQuery(string(body))
+		if err != nil {
+			writeChannelNotifyFailure(c)
+			return
+		}
+		c.Request.PostForm = values
+	}
 	notifyData := &client.NotifyData{
 		Params:  h.queryToMap(c),
 		Body:    string(body),
@@ -167,22 +206,26 @@ func (h *PayNotifyHandler) NotifyTransfer(c *gin.Context) {
 	transferResp, err := payClient.ParseTransferNotify(notifyData)
 	if err != nil {
 		h.logger.Error("[NotifyTransfer] 解析回调数据失败", zap.Error(err))
-		response.WriteBizError(c, errors.ErrParam)
+		writeChannelNotifyFailure(c)
 		return
 	}
 
 	// 3. 处理回调
 	// 注意：需要注入 transferSvc
+	if h.transferSvc == nil {
+		writeChannelNotifyFailure(c)
+		return
+	}
 	if h.transferSvc != nil {
 		if err := h.transferSvc.NotifyTransfer(c.Request.Context(), channelId, transferResp); err != nil {
 			h.logger.Error("[NotifyTransfer] 处理回调失败", zap.Error(err))
-			response.WriteBizError(c, err)
+			writeChannelNotifyFailure(c)
 			return
 		}
 	}
 
 	h.logger.Info("[NotifyTransfer] 转账回调处理成功", zap.Int64("channelId", channelId))
-	c.String(200, "success")
+	c.String(http.StatusOK, "success")
 }
 
 // GetNotifyTaskDetail 获得回调通知详情 (Task + Logs)
@@ -261,6 +304,11 @@ func (h *PayNotifyHandler) queryToMap(c *gin.Context) map[string]string {
 			result[key] = values[0]
 		}
 	}
+	for key, values := range c.Request.PostForm {
+		if len(values) > 0 {
+			result[key] = values[0]
+		}
+	}
 	return result
 }
 
@@ -282,4 +330,8 @@ func convertNotifyTaskResp(task *pay.PayNotifyTask, app *pay.PayApp) *pay2.PayNo
 		r.AppName = app.Name
 	}
 	return r
+}
+
+func writeChannelNotifyFailure(c *gin.Context) {
+	c.JSON(http.StatusInternalServerError, gin.H{"code": "FAIL", "message": "notification was not accepted"})
 }

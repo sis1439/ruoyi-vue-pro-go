@@ -27,13 +27,6 @@ const (
 	payNotifyLockTimeout = 120 * time.Second
 )
 
-// releaseScript 只删除自己持有的锁：锁超时后被他人重新持有时，本进程不得误删
-var releaseScript = redis.NewScript(`
-if redis.call("get", KEYS[1]) == ARGV[1] then
-	return redis.call("del", KEYS[1])
-end
-return 0`)
-
 // Lock 加锁并执行函数
 // 对齐 Java: PayNotifyLockRedisDAO.lock
 func (l *PayNotifyLock) Lock(ctx context.Context, taskID int64, fn func() error) (result error) {

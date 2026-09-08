@@ -386,30 +386,9 @@ func (c *WxPayClient) UnifiedRefund(ctx context.Context, req *client.UnifiedRefu
 	})
 
 	if err != nil {
-		return &client.RefundResp{
-			Status:           consts.PayRefundStatusFailure, // FALLBACK/FAILURE (Need better mapping)
-			OutTradeNo:       req.OutTradeNo,
-			OutRefundNo:      req.OutRefundNo,
-			ChannelErrorCode: "REFUND_ERROR",
-			ChannelErrorMsg:  err.Error(),
-		}, nil
-	}
-
-	status := consts.PayRefundStatusWaiting
-	switch *resp.Status {
-	case refunddomestic.STATUS_SUCCESS:
-		status = consts.PayRefundStatusSuccess
-	case refunddomestic.STATUS_CLOSED, refunddomestic.STATUS_ABNORMAL:
-		status = consts.PayRefundStatusFailure
-	}
-
-	return &client.RefundResp{
-		Status:          status,
-		OutTradeNo:      req.OutTradeNo,
-		OutRefundNo:     req.OutRefundNo,
-		ChannelRefundNo: *resp.RefundId,
-		SuccessTime:     time.Now(), // TODO: Parse SuccessTime if available
-	}, nil
+		return nil, err
+	} // An uncertain remote result must retain the pending reservation.
+	return convertRefund(resp)
 }
 
 // GetOrder 查询订单
@@ -427,10 +406,10 @@ func (c *WxPayClient) GetOrder(ctx context.Context, outTradeNo string) (*client.
 
 	status := consts.PayOrderStatusWaiting
 	var successTime time.Time
-	switch *resp.TradeState {
+	switch deref(resp.TradeState) {
 	case "SUCCESS":
 		status = consts.PayOrderStatusSuccess
-		successTime, _ = time.Parse(time.RFC3339, *resp.SuccessTime)
+		successTime, _ = time.Parse(time.RFC3339, deref(resp.SuccessTime))
 	case "CLOSED", "PAYERROR":
 		status = consts.PayOrderStatusClosed
 	}
@@ -452,11 +431,26 @@ func (c *WxPayClient) GetOrder(ctx context.Context, outTradeNo string) (*client.
 
 // GetRefund 查询退款
 func (c *WxPayClient) GetRefund(ctx context.Context, outTradeNo, outRefundNo string) (*client.RefundResp, error) {
-	return nil, errors.New("退款查询功能暂未实现")
+	svc := refunddomestic.RefundsApiService{Client: c.coreClient}
+	resp, _, err := svc.QueryByOutRefundNo(ctx, refunddomestic.QueryByOutRefundNoRequest{OutRefundNo: core.String(outRefundNo)})
+	if err != nil {
+		return nil, err
+	}
+	out, err := convertRefund(resp)
+	if err != nil {
+		return nil, err
+	}
+	if out.OutTradeNo != outTradeNo || out.OutRefundNo != outRefundNo {
+		return nil, fmt.Errorf("退款查询订单号不匹配")
+	}
+	return out, nil
 }
 
 // ParseOrderNotify 解析支付回调
 func (c *WxPayClient) ParseOrderNotify(req *client.NotifyData) (*client.OrderResp, error) {
+	if req == nil || c.config == nil || c.publicKey == nil {
+		return nil, fmt.Errorf("微信回调配置或请求缺失")
+	}
 	// 1. 构造 http.Request
 	httpReq := &http.Request{
 		Header: http.Header{},
@@ -483,7 +477,7 @@ func (c *WxPayClient) ParseOrderNotify(req *client.NotifyData) (*client.OrderRes
 
 	// 4. 转换结果
 	status := 0
-	switch *transaction.TradeState {
+	switch deref(transaction.TradeState) {
 	case "SUCCESS":
 		status = consts.PayOrderStatusSuccess
 	case "CLOSED", "PAYERROR":
@@ -496,10 +490,10 @@ func (c *WxPayClient) ParseOrderNotify(req *client.NotifyData) (*client.OrderRes
 	}
 
 	// 5. 校验商户号与 AppID 归属，避免其它商户的合法回调被当作本渠道结果
-	if mch := deref(transaction.Mchid); mch != "" && mch != c.config.MchID {
+	if mch := deref(transaction.Mchid); mch == "" || mch != c.config.MchID {
 		return nil, fmt.Errorf("回调商户号不匹配: %s", mch)
 	}
-	if appID := deref(transaction.Appid); appID != "" && appID != c.config.AppID {
+	if appID := deref(transaction.Appid); appID == "" || appID != c.config.AppID {
 		return nil, fmt.Errorf("回调 AppID 不匹配: %s", appID)
 	}
 
@@ -521,6 +515,9 @@ func (c *WxPayClient) ParseOrderNotify(req *client.NotifyData) (*client.OrderRes
 
 // ParseRefundNotify 解析退款回调
 func (c *WxPayClient) ParseRefundNotify(req *client.NotifyData) (*client.RefundResp, error) {
+	if req == nil || c.config == nil || c.publicKey == nil {
+		return nil, fmt.Errorf("微信回调配置或请求缺失")
+	}
 	// 1. 构造 http.Request
 	httpReq := &http.Request{
 		Header: http.Header{},
@@ -535,34 +532,48 @@ func (c *WxPayClient) ParseRefundNotify(req *client.NotifyData) (*client.RefundR
 	handler := notify.NewNotifyHandler(c.config.APIV3Key, verifier)
 
 	// 3. 解析并验证签名
-	refundNotify := new(refunddomestic.Refund)
+	// Callback uses refund_status; the SDK query DTO uses status.
+	refundNotify := new(struct {
+		refunddomestic.Refund
+		Mchid        string `json:"mchid"`
+		RefundStatus string `json:"refund_status"`
+	})
 	_, err := handler.ParseNotifyRequest(context.Background(), httpReq, refundNotify)
 	if err != nil {
 		return nil, fmt.Errorf("解析退款回调失败: %w", err)
 	}
+	if refundNotify.Mchid != c.config.MchID || refundNotify.Mchid == "" {
+		return nil, fmt.Errorf("退款回调商户号不匹配")
+	}
+	status := refunddomestic.Status(refundNotify.RefundStatus)
+	refundNotify.Status = &status
+	out, err := convertRefund(&refundNotify.Refund)
+	if err != nil {
+		return nil, err
+	}
+	out.RawData = req.Body
+	return out, nil
+}
 
-	// 4. 转换结果
-	status := 0
-	switch *refundNotify.Status {
+func convertRefund(refund *refunddomestic.Refund) (*client.RefundResp, error) {
+	if refund == nil || refund.Status == nil || deref(refund.OutTradeNo) == "" || deref(refund.OutRefundNo) == "" || deref(refund.RefundId) == "" {
+		return nil, fmt.Errorf("退款结果缺少必要字段")
+	}
+	status := consts.PayRefundStatusWaiting
+	switch *refund.Status {
 	case refunddomestic.STATUS_SUCCESS:
 		status = consts.PayRefundStatusSuccess
-	default:
+	case refunddomestic.STATUS_CLOSED:
 		status = consts.PayRefundStatusFailure
+	case refunddomestic.STATUS_PROCESSING, refunddomestic.STATUS_ABNORMAL: // abnormal may require intervention; funds remain reserved
+	default:
+		return nil, fmt.Errorf("未知退款状态: %s", *refund.Status)
 	}
-
-	var successTime time.Time
-	if refundNotify.SuccessTime != nil {
-		successTime = *refundNotify.SuccessTime
+	var when time.Time
+	if refund.SuccessTime != nil {
+		when = *refund.SuccessTime
 	}
-
-	return &client.RefundResp{
-		Status:          status,
-		OutTradeNo:      *refundNotify.OutTradeNo,
-		OutRefundNo:     *refundNotify.OutRefundNo,
-		ChannelRefundNo: *refundNotify.RefundId,
-		SuccessTime:     successTime,
-		RawData:         req.Body,
-	}, nil
+	return &client.RefundResp{Status: status, OutTradeNo: deref(refund.OutTradeNo), OutRefundNo: deref(refund.OutRefundNo), ChannelRefundNo: deref(refund.RefundId), SuccessTime: when}, nil
 }
 
 // UnifiedTransfer 统一转账

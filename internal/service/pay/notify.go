@@ -3,9 +3,10 @@ package pay
 import (
 	"bytes"
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
 	"io"
 	"net/http"
 	"net/url"
@@ -25,7 +26,7 @@ import (
 var NotifyFrequency = []int{15, 15, 30, 180, 1800, 1800, 1800, 3600}
 
 // notifyHTTPClient 复用连接，超时在每个请求的 Context 上控制
-var notifyHTTPClient = &http.Client{Timeout: notifyTimeout}
+var notifyHTTPClient = &http.Client{Timeout: notifyTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 
 // PayNotifyTokenHeader 支付中心 → 商城业务通知的内部调用令牌头
 const PayNotifyTokenHeader = "X-Pay-Notify-Token"
@@ -46,12 +47,13 @@ func NewPayNotifyService(q *query.Query, logger *zap.Logger, rdb *redis.Client) 
 
 // CreatePayNotifyTask 创建回调通知任务
 func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int, dataId int64) error {
+	q := repo.QueryFromContext(ctx, s.q)
 	var task *pay.PayNotifyTask
 
 	// 1. Get Data by Type
 	switch typeVal {
 	case PayNotifyTypeOrder:
-		order, err := s.q.PayOrder.WithContext(ctx).Where(s.q.PayOrder.ID.Eq(dataId)).First()
+		order, err := q.PayOrder.WithContext(ctx).Where(q.PayOrder.ID.Eq(dataId)).First()
 		if err != nil {
 			return err
 		}
@@ -63,7 +65,7 @@ func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int,
 			NotifyURL:       order.NotifyURL,
 		}
 	case PayNotifyTypeRefund:
-		refund, err := s.q.PayRefund.WithContext(ctx).Where(s.q.PayRefund.ID.Eq(dataId)).First()
+		refund, err := q.PayRefund.WithContext(ctx).Where(q.PayRefund.ID.Eq(dataId)).First()
 		if err != nil {
 			return err
 		}
@@ -76,7 +78,7 @@ func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int,
 			NotifyURL:        refund.NotifyURL,
 		}
 	case PayNotifyTypeTransfer:
-		transfer, err := s.q.PayTransfer.WithContext(ctx).Where(s.q.PayTransfer.ID.Eq(dataId)).First()
+		transfer, err := q.PayTransfer.WithContext(ctx).Where(q.PayTransfer.ID.Eq(dataId)).First()
 		if err != nil {
 			return err
 		}
@@ -97,19 +99,14 @@ func (s *PayNotifyService) CreatePayNotifyTask(ctx context.Context, typeVal int,
 	task.NotifyTimes = 0
 	task.MaxNotifyTimes = len(NotifyFrequency) + 1
 
-	return s.q.PayNotifyTask.WithContext(ctx).Create(task)
+	return q.PayNotifyTask.WithContext(ctx).Create(task)
 }
-
-// notifyConcurrency 单次执行的最大并发通知数，避免任务堆积时打爆下游与连接池
-// ponytail: 固定并发上限；量级上来后再改成可配置的 worker pool
-const notifyConcurrency = 8
 
 // notifyTimeout 单次通知的请求超时
 const notifyTimeout = 10 * time.Second
 
 // ExecuteNotify 执行回调通知 (Called by Job or Manually)
-// 返回实际执行完成的任务数。任务使用脱离调用方取消信号的 Context，
-// 保证 HTTP 请求或 Job 结束后已开始的通知不会被中途取消。
+// 返回尝试处理的任务数及错误；继承租户上下文与截止时间，等待当前批次落库。
 func (s *PayNotifyService) ExecuteNotify(ctx context.Context) (int, error) {
 	// 1. Query Waiting Tasks
 	now := time.Now()
@@ -237,13 +234,15 @@ func (s *PayNotifyService) executeNotifyTask(ctx context.Context, task *pay.PayN
 		}
 	}
 
-	if err := s.q.PayNotifyTask.WithContext(ctx).UnderlyingDB().Where("id = ?", task.ID).Select("*").Omit("id", "tenant_id", "creator", "create_time").Updates(task).Error; err != nil {
-		return err
-	}
+	return repo.InTransaction(ctx, s.q, func(ctx context.Context, tx *query.Query) error {
+		if err := tx.PayNotifyTask.WithContext(ctx).UnderlyingDB().Where("id = ?", task.ID).Select("*").Omit("id", "tenant_id", "creator", "create_time").Updates(task).Error; err != nil {
+			return err
+		}
 
-	// 3. Create Log
-	log.Status = task.Status // Use final status
-	return s.q.PayNotifyLog.WithContext(ctx).Create(log)
+		// 3. Create Log
+		log.Status = task.Status // Use final status
+		return tx.PayNotifyLog.WithContext(ctx).Create(log)
+	})
 }
 
 // invokeNotify 发起一次通知请求，返回本次的通知状态与响应文本
@@ -256,6 +255,9 @@ func (s *PayNotifyService) invokeNotify(ctx context.Context, task *pay.PayNotify
 		return PayNotifyStatusRequestFailure, fmt.Sprintf("invalid notify url: %v", err)
 	}
 
+	if !config.C.Pay.IsTrustedNotifyURL(task.NotifyURL) {
+		return PayNotifyStatusRequestFailure, "untrusted business notification URL"
+	}
 	reqCtx, cancel := context.WithTimeout(ctx, notifyTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, task.NotifyURL, bytes.NewReader(body))

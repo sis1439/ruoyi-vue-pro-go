@@ -1,87 +1,11 @@
-# verification-report.md — A01～A28 实际结果
+# C/D 验证入口
 
-**执行环境**：darwin/arm64，Go 1.25.4，无 PostgreSQL、无 Redis、无微信商户资料
-**基线 commit**：`4a240b8`（本次改动尚未提交）
-**执行日期**：2026-09-07
+当前分支已基于 A/B `6548c9e` 迁入 C/D（提交 `49f1111`），随后修复 review 问题。
 
-**状态取值**：验收通过 / 已修复待验收 / 复现成功 / 外部阻塞 / 不适用 / 待处理
+- 当前修复与最终验收：`docs/batch-cd/verification-report.md`
+- A/B 基线验收：`docs/batch-ab/verification-report.md`
+- 当前决策：`docs/decisions.md`
+- 当前操作步骤：`docs/runbook.md`
+- 尚未覆盖的外部联调与业务边界：`docs/blockers.md`
 
-> **本报告的关键限制**：本机没有 PostgreSQL、Redis 与微信商户资料，
-> 因此**所有涉及数据库行为、Redis 行为、真实支付的用例都无法执行**。
-> 这些用例状态为"外部阻塞"或"已修复待验收"，**不得读作通过**。
-> 通过的只有纯逻辑/工厂/配置层用例。
-
-## 执行的命令
-
-```
-make gen                              # 生成 internal/repo/query（未入库）
-go build ./...                        # 通过
-go vet ./...                          # 通过，无输出
-go test ./... -count=1                # 全部通过，无 FAIL
-go test ./internal/service/pay/... ./pkg/config/ -v   # 见下方逐条
-```
-
-## 本次新增并通过的自动化测试
-
-| 测试 | 文件 | 锁定的缺陷 |
-|---|---|---|
-| TestCreatorReceivesChannelCode | internal/service/pay/client/factory_test.go | F-05-01 渠道标识丢失 |
-| TestUnknownChannelFailsLoudly | 同上 | 未注册渠道不得回退 Mock |
-| TestEveryRegisteredChannelIsDispatchable | internal/service/pay/client/weixin/client_test.go | F-05-04 wx_wap/wx_h5 枚举不一致 |
-| TestCreatorKeepsChannelCode | 同上 | F-05-01 |
-| TestJsapiRequiresOpenid | 同上 | F-05-02 openid 未透传 |
-| TestExpireTimeZeroValue | 同上 | 零值过期时间不得下发渠道 |
-| TestDeref | 同上 | SDK 可选字段 nil 解引用 |
-| TestBuildNotifyBody | internal/service/pay/notify_body_test.go | F-06-01 通知体为 {} |
-| TestIsNotifySuccess | 同上 | F-06-02 裸字符串成功判定 |
-| TestValidateRejectsMissingConfig | pkg/config/config_test.go | F-11-01 缺配置静默启动 |
-| TestValidateRejectsWeakProdConfig | 同上 | F-11-02 默认密钥/明文回调 |
-
-## A01～A14（数据、契约与交易）
-
-| 用例 | 状态 | 环境 | 结果 / 未覆盖范围 |
-|---|---|---|---|
-| A01 空库初始化 | 外部阻塞 | — | 属批次 A(T02/T03)，Schema 与迁移尚未建立；本机无 PostgreSQL |
-| A02 重复执行迁移 | 外部阻塞 | — | 同 A01，无迁移器 |
-| A03 类型与模型映射 | 外部阻塞 | — | 同 A01；`pkg/config` 目前只有 `mysql.dsn`，PostgreSQL 适配未开始 |
-| A04 原版前端契约 | 部分完成 | 静态 | 已完成支付链路的契约对照，见 `api-compatibility.csv`；**全量页面盘点属批次 A(T01)，未完成** |
-| A05 商品/地址/购物车 | 待处理 | — | 批次 A 范围 |
-| A06 缺货或已下架 | 待处理 | — | 批次 B(T04) 范围 |
-| A07 最后一件并发下单 | 待处理 | — | 批次 B(T04) 范围，需真实数据库 |
-| A08 多 SKU 后项失败 | 待处理 | — | 批次 B(T04) 范围 |
-| A09 优惠券并发/积分不足 | 待处理 | — | 批次 B(T04) 范围 |
-| A10 支付单创建/提交失败 | 已修复待验收 | 静态 | 提交失败路径已修：渠道编码透传、渠道校验、未注册渠道显式报错。**需真实数据库验证无可支付孤儿单** |
-| A11 零元单/重复提交 | 已修复待验收 | 静态 | 重复提交由 `CreateOrder` 的 `AppID+MerchantOrderId` 查重挡住；**该查重依赖唯一约束，Schema 未建立** |
-| A12 取消/超时关闭 | 已修复待验收 | 静态 | F-07-02 已修（两条取消路径均加条件状态转换 + RowsAffected）。**"资源仅恢复一次"需真实数据库验证** |
-| A13 支付与取消竞争 | 已修复待验收 | 静态 | F-07-01 + F-07-02 共同覆盖：两侧都是条件更新，不可能同时成立。**并发用例需真实数据库** |
-| A14 发货/收货/自提/调价 | 待处理 | — | 未在批次 C 范围内逐项复核 |
-
-## A15～A28（支付、安全与恢复）
-
-| 用例 | 状态 | 环境 | 结果 / 未覆盖范围 |
-|---|---|---|---|
-| A15 微信渠道工厂 | 验收通过（自动化层） | 单元测试 | 渠道编码保留、未注册渠道报错、停用渠道拒绝均已实现并有测试。**跨租户拒绝依赖批次 B(T10)，未验收** |
-| A16 openid 与客户端参数 | 已修复待验收 | 静态 | channelExtras 已透传；displayContent 按固定前端键名序列化。**签名参数的正确性只能由真实商户联调证明** |
-| A17 渠道结果校验 | 已修复待验收 | 静态 | 已加 mchid/appid 归属校验与实收金额校验（F-06-08）。**错误签名分支依赖 SDK 验签，未构造用例** |
-| A18 支付业务通知 | 验收通过（自动化层） | 单元测试 | 非空 DTO + JSON 业务码判定有测试；**发送端与接收端的端到端一致性需真实数据库** |
-| A19 重复/乱序通知 | 已修复待验收 | 静态 | 支付侧本就是条件转换；售后侧 F-08-02 已修。**需真实数据库跑重复回调** |
-| A20 通知失败/重启/重放 | 已修复待验收 | 静态 | Context 脱离取消、有界并发、URL 校验、写入失败显式处理、锁按持有者释放均已修。**重启恢复需真实 Redis + 数据库** |
-| A21 get-detail?sync=true | 已修复待验收 | 静态 | 已实现：归属校验 + 3s 频率闸门 + 走统一可信入口。**频率闸门依赖 Redis，未实测** |
-| A22 全额/部分/并发退款 | 已修复待验收 | 静态 | 金额下界已补(F-08-01)，上界本就有。**并发不超退依赖 `merchant_refund_id` 唯一约束，Schema 未建立** |
-| A23 退款失败/迟到回调 | 已修复待验收 | 静态 | 售后完成已幂等(F-08-02)；支付侧状态机本就正确。**需真实数据库** |
-| A24 JWT/刷新/撤销/角色 | 待处理 | — | 属批次 B(T09)。本次仅修了密钥硬编码与 alg 未固定两点 |
-| A25 Redis 故障/默认密钥 | 部分完成 | 单元测试 | 默认密钥已在非 local 环境拒绝启动（有测试）。**"Redis 故障不降级放行"属批次 B，未验收**。注：本次的 sync 频率闸门在 Redis 故障时选择不放行，方向一致 |
-| A26 跨租户 HTTP/SQL/缓存 | 待处理 | — | 属批次 B(T10) |
-| A27 异步任务/支付/文件租户 | 待处理 | — | 属批次 B(T10) |
-| A28 端到端及备份恢复 | 外部阻塞 | — | 需完整环境；见 `runbook.md` 的演练步骤（尚未执行） |
-
-## 结论
-
-* **工程修复完成**：批次 C 的 T05/T06/T07/T08 静态确认缺陷，以及批次 D 的
-  T11/T13 工程项，代码修改已完成，编译、vet、单元测试全部通过。
-* **自动化验收通过**：仅限 A15、A18 的自动化层，以及 A25 的默认密钥部分。
-* **真实渠道验收通过**：**无**。没有商户资料，未执行任何真实支付或退款。
-* **获准生产发布**：**否**。批次 A（Schema/迁移/PostgreSQL）与批次 B
-  （认证/租户/交易事务）尚未执行，多个 P0 用例仍为待处理或外部阻塞。
-
-按 T12.3 的上线阻断条件，当前**不得给出"可生产上线"结论**。
+迁入前的 C/D 报告可从 `49f1111:docs/verification-report.md` 查阅。旧报告中的“缺少 A/B”“仅 MySQL”“无 PostgreSQL/Redis”“集成测试空跑”等描述不适用于当前分支。

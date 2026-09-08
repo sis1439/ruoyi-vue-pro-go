@@ -7,6 +7,7 @@ import (
 	"gorm.io/driver/postgres"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -173,7 +174,7 @@ func (f *orderFixture) assertState(t *testing.T, stock []int, orderCount int, us
 		for _, p := range pays {
 			if p.ID == *o.PayOrderID {
 				matched = true
-				require.Equal(t, o.No, p.MerchantOrderId)
+				require.Equal(t, strconv.FormatInt(o.ID, 10), p.MerchantOrderId)
 				require.Equal(t, o.PayPrice, p.Price)
 				require.Equal(t, consts.PayOrderStatusWaiting, p.Status)
 			}

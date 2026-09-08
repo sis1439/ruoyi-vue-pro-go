@@ -55,11 +55,12 @@ verify: gen
 	go vet ./...
 	go test ./...
 
-# 集成测试：需要真实 PostgreSQL 与 Redis，通过 build tag 隔离
-# 用法: TEST_PG_DSN=... TEST_REDIS_ADDR=... make test-integration
-test-integration:
-	@echo "Running integration tests (requires PostgreSQL + Redis)..."
-	go test -tags=integration ./... -count=1
+# Real PostgreSQL and Redis acceptance; missing dependencies cannot produce a green run.
+test-integration: gen
+	@test -n "$(TEST_POSTGRES_DSN)" || (echo "TEST_POSTGRES_DSN required"; exit 1)
+	@test -n "$(T09_REDIS_ADDR)" || (echo "T09_REDIS_ADDR required"; exit 1)
+	go test -race -count=1 -json ./... > integration-results.jsonl
+	go run ./scripts/check-integration integration-results.jsonl
 
 vet:
 	go vet ./...
@@ -92,7 +93,6 @@ help:
 	@echo "  make gen    - Generate GORM DAO code"
 	@echo "  make test   - Generate DAO and run tests"
 	@echo "  make verify - Verify dependencies, build, vet and test"
-	@echo "  make test   - Run unit tests"
 	@echo "  make test-integration - Run tests needing PostgreSQL + Redis"
 	@echo "  make lint   - Run golangci-lint"
 	@echo "  make ci     - gen + build + vet + test"

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo"
+	"github.com/wxlbd/ruoyi-mall-go/internal/repo/query"
 
 	reqPay "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
 	respPay "github.com/wxlbd/ruoyi-mall-go/internal/api/contract/admin/pay"
@@ -298,7 +300,10 @@ func (s *PayTransferService) NotifyTransfer(ctx context.Context, channelId int64
 		return err
 	}
 	// 通知转账结果给对应的业务
-	return s.notifyTransferInternal(ctx, channel, notify)
+	if notify == nil {
+		return errors.New("转账通知缺失")
+	}
+	return repo.InTransaction(ctx, s.notifySvc.q, func(ctx context.Context, _ *query.Query) error { return s.notifyTransferInternal(ctx, channel, notify) })
 }
 
 // notifyTransferInternal 内部转账通知处理

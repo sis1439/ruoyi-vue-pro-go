@@ -141,7 +141,7 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 	if order.Status != tradeModel.TradeOrderStatusUnpaid || order.PayStatus {
 		// 特殊：支付单号相同，直接返回，说明重复回调（幂等处理）
 		// 对应 Java: if (ObjectUtil.equals(order.getPayOrderId(), payOrderId))
-		if order.PayOrderID != nil && *order.PayOrderID == handleReq.PayOrderID {
+		if order.PayStatus && order.PayOrderID != nil && *order.PayOrderID == handleReq.PayOrderID {
 			p.logger.Warn("订单已支付，且支付单号相同，直接返回",
 				zap.Int64("orderId", order.ID),
 				zap.Int64("payOrderId", handleReq.PayOrderID),
@@ -155,6 +155,9 @@ func (p *PayOrderProcessor) Handle(ctx context.Context, handleReq *OrderHandleRe
 			zap.Int64p("orderPayOrderId", order.PayOrderID),
 			zap.Int("status", order.Status),
 		)
+		if order.Status == tradeModel.TradeOrderStatusCanceled && !order.PayStatus {
+			return nil, fmt.Errorf("已取消订单收到付款通知，需对账退款；通知任务保留待处理")
+		}
 		return nil, fmt.Errorf("订单不处于待支付状态")
 	}
 
