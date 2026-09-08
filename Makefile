@@ -62,16 +62,12 @@ test-integration: gen
 	go test -race -count=1 -json ./... > integration-results.jsonl
 	go run ./scripts/check-integration integration-results.jsonl
 
-vet:
+vet: gen
 	go vet ./...
 
-# 静态检查。固定版本，避免 CI 与本地结果漂移
-lint:
-	@if ! command -v golangci-lint > /dev/null; then \
-		echo "Installing golangci-lint v1.64.8..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8; \
-	fi
-	golangci-lint run ./...
+# 静态检查。直接跑固定版本，不复用 PATH 上的任意版本，避免结果漂移
+lint: gen
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./...
 
 # CI 入口：生成代码 -> 编译 -> 静态检查 -> 单元测试
 ci: gen build vet test
